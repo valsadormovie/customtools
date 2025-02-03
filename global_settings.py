@@ -481,51 +481,16 @@ class XTD_Reload_App(XTDToolsOperator):
         return {'FINISHED'}
 
 # ================== DYNAMIC POPUP ENGINE ==================
-class PopupController(bpy.types.Operator):
-    bl_idname = "xtd_tools.popup"
-    bl_label = "Popup"
-
-    message: bpy.props.StringProperty(name="Message", default="Hiba történt.")
-    buttons: bpy.props.CollectionProperty(type=bpy.types.PropertyGroup)
-
-    def execute(self, context):
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        return bpy.context.window_manager.invoke_props_dialog(self)
-
+def PopupController(title="Information", message="Message", icon='INFO', buttons=None):
     def draw(self, context):
-        layout = self.layout
-        layout.label(text=self.message)
-        row = layout.row()
-        for btn in self.buttons:
-            row.operator("xtd_tools.popup_button", text=btn.name).callback = btn.callback
-
-    @classmethod
-    def show(cls, message, buttons=None):
-        def register_buttons():
-            bpy.types.Scene.popup_buttons.clear()
-            for name, callback in buttons:
-                item = bpy.types.Scene.popup_buttons.add()
-                item.name = name
-                item.callback = callback
-
-        if not hasattr(bpy.types.Scene, "popup_buttons"):
-            bpy.types.Scene.popup_buttons = bpy.props.CollectionProperty(type=bpy.types.PropertyGroup)
+        self.layout.label(text=message, icon=icon)
         
-        register_buttons()
-        bpy.ops.xtd_tools.popup('INVOKE_DEFAULT', message=message)
+        if buttons:
+            for btn_text, operator_name, btn_icon in buttons:
+                if operator_name:
+                    self.layout.operator(operator_name, text=btn_text, icon=btn_icon if btn_icon else "NONE")
 
-class PopupButtonOperator(bpy.types.Operator):
-    bl_idname = "xtd_tools.popup_button"
-    bl_label = "Popup Button"
-
-    callback: bpy.props.StringProperty()
-
-    def execute(self, context):
-        if self.callback and self.callback != "None":
-            eval(self.callback)()
-        return {'FINISHED'}
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 # ================== DEFAULT GLOBAL PROPERTIES ==================
 bpy.types.Scene.master_txt_filepath=  bpy.props.StringProperty(name="Master TXT Filepath",description="Path to the master TXT file",subtype='FILE_PATH',default=r"C:\Movie\BP\LINKEDPARTS\MASTER.txt")
