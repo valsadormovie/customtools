@@ -328,6 +328,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
             self.report({'INFO'}, "Successfully linked node group.")
             return {'FINISHED'}
 
+        object_names = self.object_name.split(",")
         linked_objects = self.transfer_objects(source_file, object_names)
 
         if not linked_objects:
@@ -342,7 +343,10 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         if not object_names:
             print("No matching objects found.")
             return None
-            
+
+        if self.replace_mode == 'REPLACE':
+            self.replace_existing_objects(object_names)
+
         linked_objects = self.transfer_objects(source_file, object_names)
         return linked_objects
         
@@ -430,6 +434,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                     return context.scene.collection.objects
 
     def replace_existing_objects(self, object_names):
+        """Meglévő objektumok cseréje `project_uuid` alapján"""
         temp_collection = bpy.data.collections.get("TEMP_LINKED")
 
         if not temp_collection:
@@ -438,18 +443,16 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         objects_to_replace = []
 
         for obj in bpy.data.objects:
-            if "project_uuid" in obj:
-                if obj in bpy.data.collections["TEMP_LINKED"].objects:
-                    if obj["project_uuid"] in object_names:
-                        uuid_data = self.parse_project_uuid(obj["project_uuid"])
-                        if uuid_data:
-                            objects_to_replace.append((obj, uuid_data))
+            if obj.name[:12] in object_names and "project_uuid" in obj:
+                uuid_data = self.parse_project_uuid(obj["project_uuid"])
+                if uuid_data:
+                    objects_to_replace.append((obj, uuid_data))
 
         for obj, uuid_data in objects_to_replace:
             if uuid_data["uuid_base_tile_name"] == obj.name[:12]:
                 if uuid_data["uuid_transfermode"] == "APPEND":
                     if obj.name in temp_collection.objects:
-                        bpy.data.objects.remove(obj)
+                        bpy.data.objects.remove(obj)  # Teljes törlés
                 elif uuid_data["uuid_transfermode"] == "LINK":
                     if obj.name in temp_collection.objects:
                         temp_collection.objects.unlink(obj)  # Csak unlinkelés
@@ -457,34 +460,20 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         return {'FINISHED'}
 
     def transfer_objects(self, source_file, object_names):
-        if "TEMP_LINKED" not in bpy.data.collections:
-            temp_collection = bpy.data.collections.new("TEMP_LINKED")
-            bpy.context.scene.collection.children.link(temp_collection)
-        else:
-            temp_collection = bpy.data.collections["TEMP_LINKED"]
-        
-        if self.replace_mode == 'REPLACE':
-            self.replace_existing_objects(object_names)
-            
-        bpy.context.view_layer.update()
-        
-        transfered_models = []
-        
-        for obj in bpy.data.objects:
-            if "project_uuid" in obj:
-                if obj["project_uuid"] in object_names:
-                    if obj.name[:12] in transfered_models:
-                        continue
-                    transfered_models.append(obj.name[:12])
-        
         linked_objects = []
         try:
             with bpy.data.libraries.load(source_file, link=(self.transfer_mode == 'LINK')) as (data_from, data_to):
-                data_to.objects = [obj_name for obj_name in transfered_models if obj_name in data_from.objects]
+                data_to.objects = [obj_name for obj_name in object_names if obj_name in data_from.objects]
 
             if not data_to.objects:
                 print("No objects found to transfer.")
                 return None
+
+            if "TEMP_LINKED" not in bpy.data.collections:
+                temp_collection = bpy.data.collections.new("TEMP_LINKED")
+                bpy.context.scene.collection.children.link(temp_collection)
+            else:
+                temp_collection = bpy.data.collections["TEMP_LINKED"]
 
             project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
 
@@ -699,7 +688,7 @@ def selected_objects_names(self, context):
     for obj in selected_objects:
         if obj.type == 'MESH':
             if "project_uuid" in obj:
-                selected_objects_with_uuid.append(obj["project_uuid"])
+                selected_objects_with_uuid.append(obj["project_uuid"] + ", ")
             else:
                 def sanitize_name(name):
                     return name.replace(" ", "_")
@@ -719,8 +708,9 @@ def selected_objects_names(self, context):
                     
                 obj.id_properties_ensure()
                     
-                selected_objects_with_uuid.append(obj["project_uuid"])
+                selected_objects_with_uuid.append(obj["project_uuid"] + ", ")
     
+    print(f"{object_names}")
     return object_names
 
 # ---------------- Export ply ---------------------

@@ -83,7 +83,7 @@ def register():
         if not hasattr(bpy.types.Scene, name): 
             setattr(bpy.types.Scene, name, prop)
 
-    
+
 def unregister():
     global registered_properties
     

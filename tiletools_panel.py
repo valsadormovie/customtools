@@ -55,6 +55,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
             "Append": {
                 "label": "APPEND ZOOM LEVEL:",
                 "icon": "TRANSFORM_ORIGINS",
+                "extra_props": [("xtd_tools_transferreplacemode", "Replace")],
             },
             "Optimize": {
                 "label": "OPTIMIZE ZOOM LEVEL:",
@@ -63,6 +64,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
             "Link": {
                 "label": "LINK ZOOM LEVEL:",
                 "icon": "TRANSFORM_ORIGINS",
+                "extra_props": [("xtd_tools_transferreplacemode", "Replace")],
             },
         }
 
@@ -184,6 +186,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
 
 # ================ SCENES ================
 bpy.types.Scene.xtd_tools_tile_helper = bpy.props.BoolProperty(name="Tile Helper", default=False)
+bpy.types.Scene.xtd_tools_transferreplacemode = bpy.props.BoolProperty(name="Replace mode", default=False)
 bpy.types.Scene.xtd_tools_colorgrade = bpy.props.BoolProperty(name="Colorgrade Node", default=False)
 bpy.types.Scene.xtd_tools_vertex_colors = bpy.props.BoolProperty(name="Vertex Colors", default=False)
 bpy.types.Scene.xtd_tools_geometry_nodes = bpy.props.BoolProperty(name="Geometry Nodes", default=False)
@@ -209,6 +212,8 @@ bpy.types.Scene.bake_texture_resolution = bpy.props.EnumProperty(
     ],
     default="4096x4096"
 )
+
+
 
 # ================ OPERATORS ================
 # Dummy Operator Template
@@ -326,7 +331,11 @@ class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
 
     def execute(self, context):
         object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="REPLACE", object_name=object_names)
+        transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
+        if transferreplacemode:
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="REPLACE", object_name=object_names)
+        else:
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="ADD", object_name=object_names)
         return {'FINISHED'}
         
 class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
@@ -339,7 +348,11 @@ class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
 
     def execute(self, context):
         object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="REPLACE", object_name=object_names)
+        transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
+        if transferreplacemode:
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="REPLACE", object_name=object_names)
+        else:
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="ADD", object_name=object_names)
         return {'FINISHED'}
         
 class XTD_OT_OptimizeTileResolution(global_settings.XTDToolsOperator):
