@@ -311,9 +311,9 @@ class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
                     obj.property_overridable_library_set('["project_uuid"]', True)
 
         if has_changes:
-            PopupController.show(f"{blend_name}.blend fájl {len(bpy.data.objects)} objektuma frissítve lett egyedi azonosítókkal!", buttons=[("Mentés", "bpy.ops.wm.save_mainfile"), ("Nem", None)])
+            PopupController(title="UUID GENERATOR", message=f"{blend_name}.blend fájl {len(bpy.data.objects)} objektuma frissítve lett egyedi azonosítókkal!", buttons=[("Mentés", "wm.save_mainfile", "CHECKMARK"), ("Nem", "", "CHECKMARK")])
         else:
-            PopupController.show(f"{blend_name}.blend fájl már tartalmazza az összes szükséges property-t.", buttons=[("OK", None)])        
+            PopupController(title="UUID GENERATOR", message=f"{blend_name}.blend fájl már tartalmazza az összes szükséges property-t.", buttons=[("OK", None, "CHECKMARK")])
         return {'FINISHED'}
 
 class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
