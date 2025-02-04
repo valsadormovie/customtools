@@ -351,13 +351,13 @@ class XTD_OT_TransferModels(XTDToolsOperator):
 
     node_group: bpy.props.StringProperty(
         name="Node Group",
-        description="Specify the blend file name for BLENDFILENAME mode",
+        description="Specify node group",
         default=""
     )
 
     world: bpy.props.StringProperty(
         name="World",
-        description="Specify the blend file name for BLENDFILENAME mode",
+        description="Specify world",
         default=""
     )
 
@@ -385,6 +385,17 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         default=""
     )
 
+    base_collection: bpy.props.EnumProperty(
+        items=[('TEMP_LINKED', "Temp linked", ""), ('SCENE', "Scene", ""), ('COLLECTIONNAME', "Collectionname", "")],
+        name="Collection transfer destination",
+        default='TEMP_LINKED'
+    )
+    
+    collection_name: bpy.props.StringProperty(
+        name="Collection Name",
+        description="Specify collection bane",
+        default=""
+    )
 
     def execute(self, context):
         if self.node_group.strip() != "" or self.world.strip() != "":
@@ -496,7 +507,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
             return None
 
         elif self.source_mode == 'BLENDFILE':
-            return self.get_source_file(bpy.context)
+            return os.path.join(master_folder, self.file_name)
         
         return None
 
@@ -579,13 +590,23 @@ class XTD_OT_TransferModels(XTDToolsOperator):
 
 
     def collectionchecker(self):
-        temp_collection = bpy.data.collections.get("TEMP_LINKED")
+        if self.base_collection == "SCENE":
+            return bpy.context.scene.collection
+            
+        if self.base_collection == "COLLECTIONNAME":
+            if self.collection_name == "":
+                collection_destination = f"Collection"
+            else:
+                collection_destination = f"{self.collection_name}"
+        else:
+            collection_destination = f"{self.base_collection}"
         
+        temp_collection = bpy.data.collections.get(collection_destination)
         if not temp_collection:
-            temp_collection = bpy.data.collections.new("TEMP_LINKED")
+            temp_collection = bpy.data.collections.new(collection_destination)
             bpy.context.scene.collection.children.link(temp_collection)
-        
         return temp_collection
+
 
 
     def replace_existing_objects(self, selected_project_uuids):

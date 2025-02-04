@@ -24,7 +24,10 @@ class XTD_PT_TileTools(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scene = bpy.context.scene
-
+        tile_name = bpy.context.active_object.name
+        
+        row = layout.row(align=True)
+        row.alignment = 'LEFT'
         box = layout.box()
         row = box.row(align=True)
         if bpy.context.active_object:
@@ -33,55 +36,85 @@ class XTD_PT_TileTools(bpy.types.Panel):
         else:
             row.label(text="No object selected!", icon="ERROR")
             return
-
+            
+        row.prop(bpy.context.scene, "xtd_tools_selectedobjectdata", text="OBJECT UUID DATA", emboss=False, icon_only=True, icon="TRIA_DOWN" if bpy.context.scene.xtd_tools_unvisiblemodif else "TRIA_RIGHT")
+        if bpy.context.scene.xtd_tools_selectedobjectdata:
+            box = layout.box()
+            row = box.row(align=True)
+            if "project_uuid" in bpy.context.active_object:
+                grid = row.grid_flow(columns=1, align=True)
+                uuid_data = UUIDManager.parse_project_uuid(bpy.context.active_object["project_uuid"])
+                base_tile_name = uuid_data["uuid_base_tile_name"]
+                base_tile_transfermode = uuid_data["uuid_transfermode"]
+                base_tile_source = uuid_data["uuid_source_blendfile"]
+                grid.label(text=f"TILE: {base_tile_name}", icon="ASSET_MANAGER")
+                grid.label(text=f"TRANSFERMODE: {base_tile_transfermode}", icon="LINKED")
+                grid.label(text=f"SOURCE: {base_tile_source}", icon="DECORATE_LIBRARY_OVERRIDE")
+            else:
+                row.label(text="Project UUID not found!", icon="ERROR")
+        
+        layout = self.layout
+        layout.label(text=f"TILE TRANSFER MODE:", icon="AREA_JOIN")
         box = layout.box()
         row = box.row(align=True)
-        row.prop(scene, "tiletools_mode", text="MODE")
+        row.scale_x = 0.50
+        row.prop(scene, "tiletools_mode", text="")
 
         mode_ui_elements = {
-            "ShowAvailable": {
-                "label": "SHOW VISUALY ZOOM LEVEL:",
-                "icon": "TRANSFORM_ORIGINS",
-                "extra_buttons": [("Remove Shows", "xtd_tools.remove_shows", "CANCEL")],
-            },
-            "Bake": {
-                "label": "ZOOM LEVEL TO BE BAKED:",
-                "icon": "TRANSFORM_ORIGINS",
-                "extra_props": [("bake_texture_resolution", "Bake Resolution")],
-            },
             "Append": {
-                "label": "APPEND ZOOM LEVEL:",
-                "icon": "TRANSFORM_ORIGINS",
-                "extra_props": [("xtd_tools_transferreplacemode", "Replace")],
+                "label": "APPEND TILE OBJECT:",
+                "icon": "APPEND_BLEND",
+                "extra_props": [("xtd_tools_transferreplacemode", " REPLACE ")],
+                "extra_text": "Choose a zoom level to be added",
+            },
+            "Link": {
+                "label": "LINK TILE OBJECT:",
+                "icon": "LINK_BLEND",
+                "extra_props": [("xtd_tools_transferreplacemode", " REPLACE ")],
+                "extra_text": "Choose a zoom level to be linked",
             },
             "Optimize": {
                 "label": "OPTIMIZE ZOOM LEVEL:",
                 "icon": "TRANSFORM_ORIGINS",
             },
-            "Link": {
-                "label": "LINK ZOOM LEVEL:",
+            
+            "Bake": {
+                "label": "SOURCE ZOOM LEVEL:",
+                "icon": "NODE_TEXTURE",
+                "extra_props": [("bake_texture_resolution", "Resolution")],
+                "extra_text": "Choose a zoom level to be baked",
+            },
+            
+            "ShowAvailable": {
+                "label": "SHOW VISUALY ZOOM LEVEL:",
                 "icon": "TRANSFORM_ORIGINS",
-                "extra_props": [("xtd_tools_transferreplacemode", "Replace")],
+                "extra_buttons": [("Remove Shows", "xtd_tools.remove_shows", "CANCEL")],
             },
         }
 
         mode_settings = mode_ui_elements.get(scene.tiletools_mode, {})
-
+        
+        if "extra_props" in mode_settings:
+            for prop_name, label in mode_settings["extra_props"]:
+                if prop_name == "xtd_tools_transferreplacemode":
+                    row.scale_x = 0.50
+                    row.alignment = 'EXPAND'
+                    row.use_property_decorate = False
+                    row.prop(scene, prop_name, text=label, icon="MOD_DATA_TRANSFER")
+        
         if "label" in mode_settings:
             row = box.row(align=True)
             row.alignment = 'LEFT'
-            row.label(text=mode_settings["label"], icon=mode_settings["icon"])
-
-        if "extra_props" in mode_settings:
-            for prop_name, label in mode_settings["extra_props"]:
+            if "extra_text" in mode_settings:
+                row.scale_y = 0.5
+                row.label(text=mode_settings["label"], icon=mode_settings["icon"])
                 row = box.row(align=True)
-                row.prop(scene, prop_name, text=label)
-
-        if "extra_buttons" in mode_settings:
-            row = box.row(align=True)
-            for btn_label, op_id, icon in mode_settings["extra_buttons"]:
-                row.operator(op_id, text=btn_label, icon=icon)
-
+                row.scale_y = 0.5
+                row.scale_x = 0.5
+                row.label(text=mode_settings["extra_text"])
+            else:
+                row.label(text=mode_settings["label"], icon=mode_settings["icon"])
+        
         row = box.row(align=True)
         grid = row.grid_flow(columns=4, align=True)
 
@@ -105,7 +138,28 @@ class XTD_PT_TileTools(bpy.types.Panel):
             if scene.tiletools_mode != "Optimize":
                 op.blend_file = blendfile
 
-        self.draw_accordion_box(context, layout, "TILE HELPER", "xtd_tools_tile_helper", 3, [
+        if "extra_props" in mode_settings:
+            for prop_name, label in mode_settings["extra_props"]:
+                if prop_name != "xtd_tools_transferreplacemode":
+                    row.alignment = 'LEFT' 
+                    row = box.row(align=True)
+                    row.scale_x = 0.5
+                    row.label(text="TEXTURE RESOLUTION")
+                    row.scale_x = 0.5
+                    row.use_property_decorate = False
+                    row.prop(scene, prop_name, text="")
+                    
+
+        if "extra_buttons" in mode_settings:
+            row = box.row(align=True)
+            for btn_label, op_id, icon in mode_settings["extra_buttons"]:
+                row.operator(op_id, text=btn_label, icon=icon)
+
+        layout = self.layout
+        layout.separator()
+        layout.label(text=f"TILE HELPER UTILITIES:", icon="MODIFIER_DATA")
+        
+        self.draw_accordion_box(context, layout, "ADD TILE HELPER OBJECT", "xtd_tools_tile_helper", 3, [
             ("Cage", "append_cage", False),
             ("Empty", "append_empty", False),
             ("Plane", "append_plane", False),
@@ -145,16 +199,32 @@ class XTD_PT_TileTools(bpy.types.Panel):
         scene = bpy.context.scene
         row = layout.row()
         row.alignment = 'LEFT'
-
+        
         row.prop(scene, prop_name, text=label, emboss=False, icon_only=True, icon="TRIA_DOWN" if getattr(scene, prop_name) else "TRIA_RIGHT")
-        if getattr(scene, prop_name):
-            box = layout.box()
-            grid = box.grid_flow(columns=int(column_span), align=True)
-            for button_text, operator, full_width in buttons:
-                if full_width:
-                    grid.operator(f"xtd_tools.{operator}", text=button_text)
-                else:
-                    grid.operator(f"xtd_tools.{operator}", text=button_text)
+        if prop_name == "xtd_tools_tile_helper":
+            if getattr(scene, prop_name):
+                box = layout.box()
+                row = box.row(align=True)
+                row.label(text="COLLECTION DESTINATION:")
+                row = box.row(align=True)
+                row.scale_x = 0.30
+                row.prop(bpy.context.scene, "xtd_custom_collection_name")
+                row = box.row(align=True)
+                grid = box.grid_flow(columns=int(column_span), align=True)
+                for button_text, operator, full_width in buttons:
+                    if full_width:
+                        grid.operator(f"xtd_tools.{operator}", text=button_text)
+                    else:
+                        grid.operator(f"xtd_tools.{operator}", text=button_text)
+        else:
+            if getattr(scene, prop_name):
+                box = layout.box()
+                grid = box.grid_flow(columns=int(column_span), align=True)
+                for button_text, operator, full_width in buttons:
+                    if full_width:
+                        grid.operator(f"xtd_tools.{operator}", text=button_text)
+                    else:
+                        grid.operator(f"xtd_tools.{operator}", text=button_text)
 
     def check_resolution_availability(self, tile_name, zoom_level):
         master_txt_filepath = bpy.context.scene.master_txt_filepath
@@ -180,6 +250,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
 
 # ================ SCENES ================
 bpy.types.Scene.xtd_tools_tile_helper = bpy.props.BoolProperty(name="Tile Helper", default=False)
+bpy.types.Scene.xtd_tools_selectedobjectdata = bpy.props.BoolProperty(name="OBJECT DATA", default=False)
+bpy.types.Scene.xtd_custom_collection_name = bpy.props.StringProperty(name="NAME", description="Custom destination", default="")
 bpy.types.Scene.xtd_tools_transferreplacemode = bpy.props.BoolProperty(name="Replace mode", default=False)
 bpy.types.Scene.xtd_tools_colorgrade = bpy.props.BoolProperty(name="Colorgrade Node", default=False)
 bpy.types.Scene.xtd_tools_vertex_colors = bpy.props.BoolProperty(name="Vertex Colors", default=False)
@@ -189,13 +261,13 @@ bpy.types.Scene.xtd_tools_uuid = bpy.props.BoolProperty(name="UUID", default=Fal
 bpy.types.Scene.tiletools_mode = bpy.props.EnumProperty(
     name="Tile Tools Mode",
     items=[
-        ("Optimize", "Optimize", ""),
-        ("Link", "Link", ""),
         ("Append", "Append", ""),
+        ("Link", "Link", ""),
         ("Bake", "Bake", ""),
+        ("Optimize", "Optimize", ""),
         ("ShowAvailable", "Show Available", ""),
     ],
-    default="Optimize"
+    default="Append"
 )
 bpy.types.Scene.bake_texture_resolution = bpy.props.EnumProperty(
     name="Bake Texture Resolution",
@@ -209,21 +281,7 @@ bpy.types.Scene.bake_texture_resolution = bpy.props.EnumProperty(
 
 
 
-# ================ OPERATORS ================
-# Dummy Operator Template
-
-class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
-    bl_idname = "xtd_tools.bake_tile_resolution"
-    bl_label = "Bake tile Resolution"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    resolution: bpy.props.StringProperty()
-    blend_file: bpy.props.StringProperty()
-
-    def process_object(self, obj):
-        print(f"Dummy operator executed for resolution: {self.resolution}")
-        return {'FINISHED'}
-
+# ================== Show Available Operators ==================
 class XTD_OT_ShowAvailableTileResolution(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.showavailable_tile_resolution"
     bl_label = "Show Available Resolution"
@@ -273,7 +331,10 @@ class XTD_OT_RemoveShows(global_settings.XTDToolsOperator):
 
         self.report({'INFO'}, "Zoom level highlights removed.")
         return {'FINISHED'}
-        
+
+
+
+# ================== Auto add UUID Operators ==================
 class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.adduuid"
     bl_label = "Add unique IDs to objects"
@@ -315,6 +376,9 @@ class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
             PopupController(title="UUID GENERATOR", message=f"{blend_name}.blend fájl már tartalmazza az összes szükséges property-t.", buttons=[("OK", None, "CHECKMARK")])
         return {'FINISHED'}
 
+
+
+# ================== Tile Append/Link Operators ==================
 class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_tile_resolution"
     bl_label = "Append tile resolution"
@@ -328,10 +392,10 @@ class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
         global_settings.UUIDManager.deduplicate_project_uuids()
         transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
         if transferreplacemode:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="MASTERFILE", objects="SELECTED", replace_mode="REPLACE", zoom_level=self.resolution)
+            selected_replace_mode = "REPLACE"
         else:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="MASTERFILE", objects="SELECTED", replace_mode="ADD", zoom_level=self.resolution)
-        return {'FINISHED'}
+            selected_replace_mode = "ADD"
+        return bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="MASTERFILE", objects="SELECTED", replace_mode=selected_replace_mode, zoom_level=self.resolution)
         
 class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.link_tile_resolution"
@@ -346,11 +410,14 @@ class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
         global_settings.UUIDManager.deduplicate_project_uuids()
         transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
         if transferreplacemode:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="MASTERFILE", objects="SELECTED", replace_mode="REPLACE", zoom_level=self.resolution)
+            selected_replace_mode = "REPLACE"
         else:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="MASTERFILE", objects="SELECTED", replace_mode="ADD", zoom_level=self.resolution)
-        return {'FINISHED'}
-        
+            selected_replace_mode = "ADD"
+        return bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="MASTERFILE", objects="SELECTED", replace_mode=selected_replace_mode, zoom_level=self.resolution)
+
+
+
+# ================== Tile Optimizer Operator ==================
 class XTD_OT_OptimizeTileResolution(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.optimize_tile_resolution"
     bl_label = "Optimize Tile Resolution"
@@ -415,28 +482,23 @@ class XTD_OT_OptimizeTileResolution(global_settings.XTDToolsOperator):
             self.report({'INFO'}, f"Optimization completed for {len(bpy.context.selected_objects)} tiles at {self.resolution} resolution.")
             return {'FINISHED'}
 
-class XTD_OT_SetResolution(global_settings.XTDToolsOperator):
-    bl_idname = "xtd_tools.set_resolution"
-    bl_label = "Set Resolution"
-    bl_description = "Set the tile resolution."
-    bl_options = {'REGISTER', 'UNDO'}
 
-    resolution: bpy.props.StringProperty()
 
-    def process_object(self, obj):
-        print(f"Dummy operator executed for resolution: {self.resolution}")
-        return {'FINISHED'}
-
-# Tile Helper Operators
+# ================== Helper Object Tiles Operators ==================
 class XTD_OT_AppendCage(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_cage"
     bl_label = "Append Cage"
     bl_description = "Append the cage object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="HQ_GRID_FINAL_DECIMATED.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "CAGE"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="HQ_GRID_FINAL_DECIMATED.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendEmpty(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_empty"
@@ -444,9 +506,15 @@ class XTD_OT_AppendEmpty(global_settings.XTDToolsOperator):
     bl_description = "Append the empty object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPEmptyCubeGrid.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "EMPTY"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="BPEmptyCubeGrid.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendPlane(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_plane"
@@ -454,9 +522,15 @@ class XTD_OT_AppendPlane(global_settings.XTDToolsOperator):
     bl_description = "Append Plane objects with a unique suffix"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_FINAL.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "CAGE"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_FINAL.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendPretopo(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_pretopo"
@@ -464,9 +538,14 @@ class XTD_OT_AppendPretopo(global_settings.XTDToolsOperator):
     bl_description = "Append the pretopo object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_PRETOPO_FINAL.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "CAGE"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_PRETOPO_FINAL.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendHQPretopo(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_hqpretopo"
@@ -474,9 +553,14 @@ class XTD_OT_AppendHQPretopo(global_settings.XTDToolsOperator):
     bl_description = "Append the hq pretopo object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_HQ_PRETOPO_FINAL.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "CAGE"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_HQ_PRETOPO_FINAL.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendHQLand(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_hq_land"
@@ -484,9 +568,14 @@ class XTD_OT_AppendHQLand(global_settings.XTDToolsOperator):
     bl_description = "Append the high-quality land object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="HQ_GRID_FINAL.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "HELPER"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="HQ_GRID_FINAL.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendTrueLand(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_true_land"
@@ -494,9 +583,14 @@ class XTD_OT_AppendTrueLand(global_settings.XTDToolsOperator):
     bl_description = "Append the true land object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BP19_LAND_TRUECAGE.blend", objects="SELECTED", replace_mode="ADD")
-        return {'FINISHED'}
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "HELPER"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="BP19_LAND_TRUECAGE.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
 
 class XTD_OT_AppendTrueHouse(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_true_house"
@@ -504,11 +598,31 @@ class XTD_OT_AppendTrueHouse(global_settings.XTDToolsOperator):
     bl_description = "Append the true house object."
     bl_options = {'REGISTER', 'UNDO'}
 
+    def execute(self, context):
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
+        if bpy.context.scene.xtd_custom_collection_name == "":
+            collection_name = "HELPER"
+        else:
+            collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
+        return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="TRUE_HOUSE.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
+
+# ================ Bake Tile Operators ================
+class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.bake_tile_resolution"
+    bl_label = "Bake tile Resolution"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    resolution: bpy.props.StringProperty()
+    blend_file: bpy.props.StringProperty()
+
     def process_object(self, obj):
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="TRUE_HOUSE.blend", objects="SELECTED", replace_mode="ADD")
+        print(f"Dummy operator executed for resolution: {self.resolution}")
         return {'FINISHED'}
 
-# Colorgrade Node Operators
+
+
+# ================ Colorgrade Node Operators ================
 class XTD_OT_AddColorgrade(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.add_colorgrade"
     bl_label = "Add Colorgrade"
@@ -584,7 +698,9 @@ class XTD_OT_RemoveColorgrade(global_settings.XTDToolsOperator):
                 node_tree.links.new(link_node.outputs[0], principled.inputs[0])
         return {'FINISHED'}
 
-# Vertex Colors Operators
+
+
+# ================ Vertex Colors Operators ================
 class XTD_OT_CreateTreeColor(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.create_tree_color"
     bl_label = "Create Tree Color Attribute"
@@ -605,7 +721,9 @@ class XTD_OT_BakeVertexColors(global_settings.XTDToolsOperator):
         print("Dummy operator executed: Bake to Vertex Colors")
         return {'FINISHED'}
 
-# Geometry Nodes Operators
+
+
+# ================ Geometry Nodes Operators ================
 class XTD_OT_HoleFiller(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.hole_filler"
     bl_label = "Hole Filler"
@@ -646,7 +764,9 @@ class XTD_OT_TreeSeparator(global_settings.XTDToolsOperator):
         print("Dummy operator executed: Tree Separator")
         return {'FINISHED'}
 
-# Main SFX Operators
+
+
+# ================ Main SFX Operators ================
 class XTD_OT_AddDuna(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.add_duna"
     bl_label = "Add Duna, World, Sun"
