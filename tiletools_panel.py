@@ -1,7 +1,6 @@
 #-------------------------------------------------
 #-TILETOOLS_PANEL.py
 #-------------------------------------------------
-
 from .global_settings import *
 
 # ================== PANEL =================
@@ -26,7 +25,6 @@ class XTD_PT_TileTools(bpy.types.Panel):
         layout = self.layout
         scene = bpy.context.scene
 
-        # Első blokk: aktuális objektum kijelzése
         box = layout.box()
         row = box.row(align=True)
         if bpy.context.active_object:
@@ -34,9 +32,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
             row.label(text=f"Selected Object: {tile_name}", icon="OBJECT_DATA")
         else:
             row.label(text="No object selected!", icon="ERROR")
-            return  # Ha nincs aktív objektum, kilépünk a rajzolásból
+            return
 
-        # Második blokk: mód kiválasztása és extra elemek
         box = layout.box()
         row = box.row(align=True)
         row.prop(scene, "tiletools_mode", text="MODE")
@@ -85,7 +82,6 @@ class XTD_PT_TileTools(bpy.types.Panel):
             for btn_label, op_id, icon in mode_settings["extra_buttons"]:
                 row.operator(op_id, text=btn_label, icon=icon)
 
-        # Harmadik blokk: Zoom level gombok
         row = box.row(align=True)
         grid = row.grid_flow(columns=4, align=True)
 
@@ -102,14 +98,13 @@ class XTD_PT_TileTools(bpy.types.Panel):
         for zoom_level in zoom_levels:
             exists, blendfile = self.check_resolution_availability(tile_name, zoom_level)
             sub_row = grid.row(align=True)
-            sub_row.alert = not exists  # Ha nincs, akkor figyelmeztető (piros)
-            sub_row.enabled = exists    # Ha létezik, akkor engedélyezzük a gombot
+            sub_row.alert = not exists
+            sub_row.enabled = exists
             op = sub_row.operator(operator_id, text=zoom_level)
             op.resolution = zoom_level
             if scene.tiletools_mode != "Optimize":
                 op.blend_file = blendfile
 
-        # Negyedik blokk: Accordion szekciók (Tile Helper, Color Grade Node, stb.)
         self.draw_accordion_box(context, layout, "TILE HELPER", "xtd_tools_tile_helper", 3, [
             ("Cage", "append_cage", False),
             ("Empty", "append_empty", False),
@@ -150,7 +145,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
         scene = bpy.context.scene
         row = layout.row()
         row.alignment = 'LEFT'
-        # A prop nevét a scene property-kből vesszük, és az ikon attól függ, hogy az érték True (TRIA_DOWN) vagy False (TRIA_RIGHT)
+
         row.prop(scene, prop_name, text=label, emboss=False, icon_only=True, icon="TRIA_DOWN" if getattr(scene, prop_name) else "TRIA_RIGHT")
         if getattr(scene, prop_name):
             box = layout.box()
@@ -172,9 +167,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
         for line in lines:
             try:
                 name, blendfile, zoom = line.strip().split(" | ")
-                # Feltételezzük, hogy a tile név első 12 karaktere elegendő az egyezéshez
+
                 if name[:12] == tile_name[:12] and zoom == zoom_level:
-                    # Ha a blendfile létezik (itt csak az útvonal összeállítását ellenőrizzük)
                     full_path = os.path.join(os.path.dirname(master_txt_filepath), blendfile)
                     if os.path.exists(full_path):
                         return (True, blendfile)
@@ -330,12 +324,13 @@ class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
     blend_file: bpy.props.StringProperty()
 
     def execute(self, context):
-        object_names = selected_objects_names(self, context)
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
         transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
         if transferreplacemode:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="REPLACE", object_name=object_names)
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="MASTERFILE", objects="SELECTED", replace_mode="REPLACE", zoom_level=self.resolution)
         else:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="ADD", object_name=object_names)
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="MASTERFILE", objects="SELECTED", replace_mode="ADD", zoom_level=self.resolution)
         return {'FINISHED'}
         
 class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
@@ -347,12 +342,13 @@ class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
     blend_file: bpy.props.StringProperty()
 
     def execute(self, context):
-        object_names = selected_objects_names(self, context)
+        global_settings.UUIDManager.ensure_project_uuid()
+        global_settings.UUIDManager.deduplicate_project_uuids()
         transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
         if transferreplacemode:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="REPLACE", object_name=object_names)
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="MASTERFILE", objects="SELECTED", replace_mode="REPLACE", zoom_level=self.resolution)
         else:
-            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="BLENDFILE", file_name=self.blend_file, objects="SELECTED", replace_mode="ADD", object_name=object_names)
+            bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="MASTERFILE", objects="SELECTED", replace_mode="ADD", zoom_level=self.resolution)
         return {'FINISHED'}
         
 class XTD_OT_OptimizeTileResolution(global_settings.XTDToolsOperator):
@@ -438,9 +434,8 @@ class XTD_OT_AppendCage(global_settings.XTDToolsOperator):
     bl_description = "Append the cage object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="HQ_GRID_FINAL_DECIMATED.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="HQ_GRID_FINAL_DECIMATED.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendEmpty(global_settings.XTDToolsOperator):
@@ -449,9 +444,8 @@ class XTD_OT_AppendEmpty(global_settings.XTDToolsOperator):
     bl_description = "Append the empty object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPEmptyCubeGrid.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPEmptyCubeGrid.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendPlane(global_settings.XTDToolsOperator):
@@ -460,9 +454,8 @@ class XTD_OT_AppendPlane(global_settings.XTDToolsOperator):
     bl_description = "Append Plane objects with a unique suffix"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_FINAL.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_FINAL.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendPretopo(global_settings.XTDToolsOperator):
@@ -471,9 +464,8 @@ class XTD_OT_AppendPretopo(global_settings.XTDToolsOperator):
     bl_description = "Append the pretopo object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_PRETOPO_FINAL.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_PRETOPO_FINAL.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendHQPretopo(global_settings.XTDToolsOperator):
@@ -482,9 +474,8 @@ class XTD_OT_AppendHQPretopo(global_settings.XTDToolsOperator):
     bl_description = "Append the hq pretopo object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_HQ_PRETOPO_FINAL.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BPMAINPROJECT_GRID_PLANE_HQ_PRETOPO_FINAL.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendHQLand(global_settings.XTDToolsOperator):
@@ -493,9 +484,8 @@ class XTD_OT_AppendHQLand(global_settings.XTDToolsOperator):
     bl_description = "Append the high-quality land object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="HQ_GRID_FINAL.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="HQ_GRID_FINAL.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendTrueLand(global_settings.XTDToolsOperator):
@@ -504,9 +494,8 @@ class XTD_OT_AppendTrueLand(global_settings.XTDToolsOperator):
     bl_description = "Append the true land object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BP19_LAND_TRUECAGE.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="BP19_LAND_TRUECAGE.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 class XTD_OT_AppendTrueHouse(global_settings.XTDToolsOperator):
@@ -515,9 +504,8 @@ class XTD_OT_AppendTrueHouse(global_settings.XTDToolsOperator):
     bl_description = "Append the true house object."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        object_names = selected_objects_names(self, context)
-        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="TRUE_HOUSE.blend", objects="SELECTED", replace_mode="ADD", object_name=object_names)
+    def process_object(self, obj):
+        bpy.ops.xtd_tools.transfermodels(transfer_mode="APPEND", source_mode="BLENDFILE", file_name="TRUE_HOUSE.blend", objects="SELECTED", replace_mode="ADD")
         return {'FINISHED'}
 
 # Colorgrade Node Operators
@@ -527,7 +515,7 @@ class XTD_OT_AddColorgrade(global_settings.XTDToolsOperator):
     bl_description = "Add color grading to materials."
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
+    def process_object(self, obj):
         bpy.context.preferences.edit.use_global_undo = False
         object_names = [obj.name for obj in bpy.context.scene.objects if obj.type == 'MESH']
         object_names = ",".join(object_names)
