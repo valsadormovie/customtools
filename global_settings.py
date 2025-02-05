@@ -37,7 +37,8 @@ panels = [
     "transformtools_panel",
     "vertexgrouptools_panel",
     "utilitytools_panel",
-    "tiletools_panel"
+    "tiletools_panel",
+    "scriptrunner_panel"
 ]
 
 

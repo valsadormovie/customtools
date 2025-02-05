@@ -58,7 +58,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
         box = layout.box()
         row = box.row(align=True)
         row.scale_x = 0.50
-        row.prop(scene, "tiletools_mode", text="")
+        row.prop(scene, "xtd_tools_tiletools_mode", text="")
 
         mode_ui_elements = {
             "Append": {
@@ -79,9 +79,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
             },
             
             "Bake": {
-                "label": "SOURCE ZOOM LEVEL:",
+                "label": "BAKE TEXTURE WITH ZOOM LEVEL:",
                 "icon": "NODE_TEXTURE",
-                "extra_props": [("bake_texture_resolution", "Resolution")],
                 "extra_text": "Choose a zoom level to be baked",
             },
             
@@ -90,9 +89,10 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 "icon": "TRANSFORM_ORIGINS",
                 "extra_buttons": [("Remove Shows", "xtd_tools.remove_shows", "CANCEL")],
             },
+            
         }
 
-        mode_settings = mode_ui_elements.get(scene.tiletools_mode, {})
+        mode_settings = mode_ui_elements.get(scene.xtd_tools_tiletools_mode, {})
         
         if "extra_props" in mode_settings:
             for prop_name, label in mode_settings["extra_props"]:
@@ -115,85 +115,128 @@ class XTD_PT_TileTools(bpy.types.Panel):
             else:
                 row.label(text=mode_settings["label"], icon=mode_settings["icon"])
         
-        row = box.row(align=True)
-        grid = row.grid_flow(columns=4, align=True)
-
-        zoom_levels = ["BP18", "BP19", "BP20", "BP21"]
-        operator_map = {
-            "ShowAvailable": "xtd_tools.showavailable_tile_resolution",
-            "Bake": "xtd_tools.bake_tile_resolution",
-            "Append": "xtd_tools.append_tile_resolution",
-            "Optimize": "xtd_tools.optimize_tile_resolution",
-            "Link": "xtd_tools.link_tile_resolution"
-        }
-        operator_id = operator_map.get(scene.tiletools_mode, "xtd_tools.showavailable_tile_resolution")
-
-        for zoom_level in zoom_levels:
-            exists, blendfile = self.check_resolution_availability(tile_name, zoom_level)
-            sub_row = grid.row(align=True)
-            sub_row.alert = not exists
-            sub_row.enabled = exists
-            op = sub_row.operator(operator_id, text=zoom_level)
-            op.resolution = zoom_level
-            if scene.tiletools_mode != "Optimize":
-                op.blend_file = blendfile
-
-        if "extra_props" in mode_settings:
-            for prop_name, label in mode_settings["extra_props"]:
-                if prop_name != "xtd_tools_transferreplacemode":
-                    row.alignment = 'LEFT' 
-                    row = box.row(align=True)
-                    row.scale_x = 0.5
-                    row.label(text="TEXTURE RESOLUTION")
-                    row.scale_x = 0.5
-                    row.use_property_decorate = False
-                    row.prop(scene, prop_name, text="")
-                    
-
-        if "extra_buttons" in mode_settings:
+        if scene.xtd_tools_tiletools_mode == "Bake":
+            layout = self.layout
             row = box.row(align=True)
-            for btn_label, op_id, icon in mode_settings["extra_buttons"]:
-                row.operator(op_id, text=btn_label, icon=icon)
-
-        layout = self.layout
-        layout.separator()
-        layout.label(text=f"TILE HELPER UTILITIES:", icon="MODIFIER_DATA")
+            row.separator()
+            row.prop(scene, "xtd_tools_bake_texture_mode", expand=True)
+            row = layout.row()
+            row.alignment = 'LEFT'
+            if scene.xtd_tools_bake_texture_mode == "EXTENDED":
+                row = box.row(align=True)
+                row.label(text="CREATE NEW:")
+                row = box.row(align=True)
+                row.alignment = 'EXPAND'
+                row.use_property_split = True
+                row.use_property_decorate = False
+                row.label(text="", icon='UV')
+                row.prop(scene, "xtd_tools_bake_unwrap", expand=True)
+                
+                row = box.row(align=True)
+                row.alignment = 'EXPAND'
+                row.use_property_split = True
+                row.use_property_decorate = False
+                row.label(text="", icon='UV_DATA')
+                row.prop(scene, "xtd_tools_bake_newuvmap", expand=True)
+                
+                row = box.row(align=True)
+                row.alignment = 'EXPAND'
+                row.use_property_split = True
+                row.use_property_decorate = False
+                row.label(text="", icon='MATERIAL')
+                row.prop(scene, "xtd_tools_bake_newmaterial", expand=True)
+                
+                row = box.row(align=True)
+                row.alignment = 'EXPAND'
+                row.use_property_split = True
+                row.use_property_decorate = False
+                row.label(text="", icon='TEXTURE')
+                row.prop(scene, "xtd_tools_bake_texture_resolution", text="MODE")
+                row = box.row(align=True)
+                row.label(text="SOURCE TILE RESOLUTION:")
         
-        self.draw_accordion_box(context, layout, "ADD TILE HELPER OBJECT", "xtd_tools_tile_helper", 3, [
-            ("Cage", "append_cage", False),
-            ("Empty", "append_empty", False),
-            ("Plane", "append_plane", False),
-            ("Pretopo", "append_pretopo", False),
-            ("HQ Pretopo", "append_hqpretopo", False),
-            ("HQ Land", "append_hq_land", False),
-            ("True Land", "append_true_land", False),
-            ("True House", "append_true_house", False),
-        ])
+        if scene.xtd_tools_tiletools_mode == "Helper":
+            layout = self.layout
+            layout.separator()
+            layout.label(text=f"TILE HELPER UTILITIES:", icon="MODIFIER_DATA")
+            
+            self.draw_accordion_box(context, layout, "ADD TILE HELPER OBJECT", "xtd_tools_tile_helper", 3, [
+                ("Cage", "append_cage", False),
+                ("Empty", "append_empty", False),
+                ("Plane", "append_plane", False),
+                ("Pretopo", "append_pretopo", False),
+                ("HQ Pretopo", "append_hqpretopo", False),
+                ("HQ Land", "append_hq_land", False),
+                ("True Land", "append_true_land", False),
+                ("True House", "append_true_house", False),
+            ])
 
-        self.draw_accordion_box(context, layout, "COLOR GRADE NODE", "xtd_tools_colorgrade", 2, [
-            ("Add", "add_colorgrade", False),
-            ("Remove", "remove_colorgrade", False),
-        ])
+            self.draw_accordion_box(context, layout, "COLOR GRADE NODE", "xtd_tools_colorgrade", 2, [
+                ("Add", "add_colorgrade", False),
+                ("Remove", "remove_colorgrade", False),
+            ])
 
-        self.draw_accordion_box(context, layout, "VERTEX COLORS", "xtd_tools_vertex_colors", 2, [
-            ("Create Tree Color Attribute", "create_tree_color", False),
-            ("Bake to Vertex Colors", "bake_vertex_colors", False),
-        ])
+            self.draw_accordion_box(context, layout, "VERTEX COLORS", "xtd_tools_vertex_colors", 2, [
+                ("Create Tree Color Attribute", "create_tree_color", False),
+                ("Bake to Vertex Colors", "bake_vertex_colors", False),
+            ])
 
-        self.draw_accordion_box(context, layout, "GEOMETRY NODES", "xtd_tools_geometry_nodes", 1, [
-            ("Hole Filler", "hole_filler", False),
-            ("Shrinkwrap Remesh", "shrinkwrap_remesh", False),
-            ("Z Separator", "z_separator", False),
-            ("Tree Separator", "tree_separator", False),
-        ])
+            self.draw_accordion_box(context, layout, "GEOMETRY NODES", "xtd_tools_geometry_nodes", 1, [
+                ("Hole Filler", "hole_filler", False),
+                ("Shrinkwrap Remesh", "shrinkwrap_remesh", False),
+                ("Z Separator", "z_separator", False),
+                ("Tree Separator", "tree_separator", False),
+            ])
 
-        self.draw_accordion_box(context, layout, "MAIN SFX", "xtd_tools_main_sfx", 1, [
-            ("Add Duna, World, Sun", "add_duna", False),
-        ])
-        
-        self.draw_accordion_box(context, layout, "UUID", "xtd_tools_uuid", 1, [
-            ("Create unique IDs", "adduuid", False),
-        ])
+            self.draw_accordion_box(context, layout, "MAIN SFX", "xtd_tools_main_sfx", 1, [
+                ("Add Duna, World, Sun", "add_duna", False),
+            ])
+            
+            self.draw_accordion_box(context, layout, "UUID", "xtd_tools_uuid", 1, [
+                ("Create unique IDs", "adduuid", False),
+            ])
+            
+        else:
+            row = box.row(align=True)
+            grid = row.grid_flow(columns=4, align=True)
+
+            zoom_levels = ["BP18", "BP19", "BP20", "BP21"]
+            operator_map = {
+                "ShowAvailable": "xtd_tools.showavailable_tile_resolution",
+                "Bake": "xtd_tools.bake_tile_resolution",
+                "Append": "xtd_tools.append_tile_resolution",
+                "Optimize": "xtd_tools.optimize_tile_resolution",
+                "Link": "xtd_tools.link_tile_resolution"
+            }
+            operator_id = operator_map.get(scene.xtd_tools_tiletools_mode, "xtd_tools.showavailable_tile_resolution")
+
+            for zoom_level in zoom_levels:
+                exists, blendfile = self.check_resolution_availability(tile_name, zoom_level)
+                sub_row = grid.row(align=True)
+                sub_row.alert = not exists
+                sub_row.enabled = exists
+                op = sub_row.operator(operator_id, text=zoom_level)
+                op.resolution = zoom_level
+                if scene.xtd_tools_tiletools_mode != "Optimize":
+                    op.blend_file = blendfile
+
+            if "extra_props" in mode_settings:
+                for prop_name, label in mode_settings["extra_props"]:
+                    if prop_name != "xtd_tools_transferreplacemode":
+                        row.alignment = 'LEFT' 
+                        row = box.row(align=True)
+                        row.scale_x = 0.5
+                        row.label(text="TEXTURE RESOLUTION")
+                        row.scale_x = 0.5
+                        row.use_property_decorate = False
+                        row.prop(scene, prop_name, text="")
+                        
+
+            if "extra_buttons" in mode_settings:
+                row = box.row(align=True)
+                for btn_label, op_id, icon in mode_settings["extra_buttons"]:
+                    row.operator(op_id, text=btn_label, icon=icon)
+
 
     def draw_accordion_box(self, context, layout, label, prop_name, column_span, buttons):
         scene = bpy.context.scene
@@ -258,7 +301,7 @@ bpy.types.Scene.xtd_tools_vertex_colors = bpy.props.BoolProperty(name="Vertex Co
 bpy.types.Scene.xtd_tools_geometry_nodes = bpy.props.BoolProperty(name="Geometry Nodes", default=False)
 bpy.types.Scene.xtd_tools_main_sfx = bpy.props.BoolProperty(name="Main SFX", default=False)
 bpy.types.Scene.xtd_tools_uuid = bpy.props.BoolProperty(name="UUID", default=False)
-bpy.types.Scene.tiletools_mode = bpy.props.EnumProperty(
+bpy.types.Scene.xtd_tools_tiletools_mode = bpy.props.EnumProperty(
     name="Tile Tools Mode",
     items=[
         ("Append", "Append", ""),
@@ -266,20 +309,57 @@ bpy.types.Scene.tiletools_mode = bpy.props.EnumProperty(
         ("Bake", "Bake", ""),
         ("Optimize", "Optimize", ""),
         ("ShowAvailable", "Show Available", ""),
+        ("Helper", "Helper", ""),
     ],
     default="Append"
 )
-bpy.types.Scene.bake_texture_resolution = bpy.props.EnumProperty(
-    name="Bake Texture Resolution",
+
+bpy.types.Scene.xtd_tools_bake_texture_mode = bpy.props.EnumProperty(
+    name="Mode",
+    description="Choose the bake mode",
     items=[
-        ("1024x1024", "1024x1024", ""),
-        ("2048x2048", "2048x2048", ""),
-        ("4096x4096", "4096x4096", ""),
+        ("SIMPLE", "SIMPLE", "Simple bake"),
+        ("EXTENDED", "EXTENDED", "Extended bake")
     ],
-    default="4096x4096"
+    default="SIMPLE"
 )
 
+bpy.types.Scene.xtd_tools_bake_unwrap = bpy.props.EnumProperty(name='UNWRAP',
+        description='UNWRAP',
+        items =  (
+            ('YES','YES',''),
+            ('NO','NO','')
+        ),
+        default = 'NO'
+)
 
+bpy.types.Scene.xtd_tools_bake_newuvmap = bpy.props.EnumProperty(name='UVMAP',
+        description='UVMAP',
+        items =  (
+            ('YES','YES',''),
+            ('NO','NO','')
+        ),
+        default = 'NO'
+)
+    
+bpy.types.Scene.xtd_tools_bake_newmaterial = bpy.props.EnumProperty(name='MATERIAL',
+        description='MATERIAL',
+        items =  (
+            ('YES','YES',''),
+            ('NO','NO','')
+        ),
+        default = 'NO'
+)
+    
+bpy.types.Scene.xtd_tools_bake_texture_resolution = bpy.props.EnumProperty(
+    name="Bake Texture Resolution",
+    items=[
+        ("1024", "1024x1024", ""),
+        ("2048", "2048x2048", ""),
+        ("4096", "4096x4096", ""),
+    ],
+    default="4096"
+)
 
 # ================== Show Available Operators ==================
 class XTD_OT_ShowAvailableTileResolution(global_settings.XTDToolsOperator):
@@ -415,7 +495,154 @@ class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
             selected_replace_mode = "ADD"
         return bpy.ops.xtd_tools.transfermodels(transfer_mode="LINK", source_mode="MASTERFILE", objects="SELECTED", replace_mode=selected_replace_mode, zoom_level=self.resolution)
 
+# ================ Bake Tile Operators ================
+class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.bake_tile_resolution"
+    bl_label = "Bake tile Resolution"
+    bl_options = {'REGISTER', 'UNDO'}
 
+    resolution: bpy.props.StringProperty()
+    blend_file: bpy.props.StringProperty()
+
+    def execute(self, context):
+        import io
+        from contextlib import redirect_stdout
+
+        stdout = io.StringIO()
+        statusheader(bl_label="Bake tile Resolution", functiontext="Working selected objects...")
+        with redirect_stdout(stdout):
+            scene = bpy.context.scene
+            scene.render.engine = 'CYCLES'
+            scene.cycles.feature_set = 'EXPERIMENTAL'
+            scene.cycles.device = 'GPU'
+            scene.cycles.use_denoising = False
+            scene.cycles.samples = 4
+            scene.cycles.preview_samples = 4
+            scene.cycles.max_bounces = 4
+            scene.cycles.diffuse_bounces = 4
+            scene.cycles.glossy_bounces = 0
+            scene.cycles.transmission_bounces = 0
+            scene.cycles.volume_bounces = 0
+            scene.cycles.transparent_max_bounces = 0
+            scene.cycles.sample_clamp_direct = 0
+            scene.cycles.sample_clamp_indirect = 2
+            scene.cycles.blur_glossy = 1
+            scene.cycles.caustics_reflective = False
+            scene.cycles.caustics_refractive = False
+            scene.cycles.use_auto_tile = False
+            scene.cycles.bake_type = 'DIFFUSE'
+            scene.render.bake.use_pass_direct = False
+            scene.render.bake.use_pass_indirect = False
+            scene.render.bake.use_selected_to_active = True
+            scene.render.bake.cage_extrusion = 0.5
+            scene.render.bake.max_ray_distance = 50
+            
+            selected_objects = bpy.context.selected_objects
+            if not selected_objects:
+                self.report({'WARNING'}, "No objects selected.")
+                return {'CANCELLED'}
+
+            selected_objects = [obj for obj in selected_objects]
+            temp_collection_name = "TEMP_BAKE"
+            texture_resolution = int(scene.xtd_tools_bake_texture_resolution)
+            
+            bpy.ops.object.select_all(action = 'DESELECT')
+            global_settings.UUIDManager.ensure_project_uuid()
+            global_settings.UUIDManager.deduplicate_project_uuids()
+            
+            
+            with alive_bar(len(selected_objects), title='   ', length=50, max_cols=98, bar='filling') as bar:
+                
+                for obj in selected_objects:
+                    bpy.ops.object.select_all(action = 'DESELECT')
+                    obj = bpy.data.objects[obj.name]
+                    obj.select_set(True)
+                    bpy.context.view_layer.objects.active = obj
+                    if scene.xtd_tools_bake_newuvmap == "YES":
+                        for uvmap in obj.data.uv_layers[:-1]:
+                            obj.data.uv_layers.remove(obj.data.uv_layers[0])
+                    
+                    uuid_data = global_settings.UUIDManager.parse_project_uuid(obj["project_uuid"])
+                    tile_name_base = uuid_data["uuid_base_tile_name"] 
+                    tile_name = f"{tile_name_base}_{UUIDManager.generate_random_hash()}"
+                    
+                    if scene.xtd_tools_bake_newmaterial == "YES":
+                        obj.data.materials.clear()
+                        
+                        material_name = f"M_{tile_name}"
+                        material = bpy.data.materials.new(name=material_name)
+                        material.use_nodes = True
+                        obj.data.materials.append(material)
+                        
+                        image_name = f"T_{tile_name}"
+                        image = bpy.data.images.new(name=image_name, width=texture_resolution, height=texture_resolution, alpha=False)
+                        
+                        nodes = material.node_tree.nodes
+                        links = material.node_tree.links
+                        
+                        for node in nodes:
+                            nodes.remove(node)
+                        
+                        texture_node = nodes.new('ShaderNodeTexImage')
+                        texture_node.image = image
+                        texture_node.select = True
+                        material.node_tree.nodes.active = texture_node
+                        
+                        bsdf_node = nodes.new('ShaderNodeBsdfDiffuse')
+                        output_node = nodes.new('ShaderNodeOutputMaterial')
+                        
+                        links.new(texture_node.outputs['Color'], bsdf_node.inputs['Color'])
+                        links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
+
+                    if scene.xtd_tools_bake_unwrap == "YES":
+                        bpy.ops.object.mode_set(mode = 'EDIT')
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        bpy.ops.uv.smart_project()
+                        bpy.ops.object.mode_set(mode = 'OBJECT')
+
+                    bpy.ops.xtd_tools.transfermodels(
+                        transfer_mode="LINK",
+                        source_mode="MASTERFILE",
+                        objects="SELECTED",
+                        base_collection="COLLECTIONNAME",
+                        collection_name=temp_collection_name,
+                        zoom_level=self.resolution
+                    )
+
+                    temp_collection = bpy.data.collections.get(temp_collection_name)
+                    if not temp_collection:
+                        self.report({'WARNING'}, "TEMP_BAKE collection not found after linking.")
+                        return {'CANCELLED'}
+
+                    linked_objects = [o for o in temp_collection.objects if o.library]
+                    if not linked_objects:
+                        self.report({'WARNING'}, "No linked objects found in TEMP_BAKE.")
+                        return {'CANCELLED'}
+
+                    bpy.ops.object.select_all(action='DESELECT')
+                    for linked_obj in linked_objects:
+                        linked_obj.select_set(True)
+
+                    bpy.context.view_layer.objects.active = obj
+                    obj.select_set(True)
+
+                    try:
+                        bpy.ops.object.bake(type='DIFFUSE')
+                    except Exception as e:
+                        self.report({'ERROR'}, f"Bake failed: {e}")
+                        return {'CANCELLED'}
+
+                    for linked_obj in linked_objects:
+                        temp_collection.objects.unlink(linked_obj)
+                    bar()
+                bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+                bpy.ops.object.select_all(action = 'DESELECT')
+                    
+            bpy.ops.object.select_all(action = 'DESELECT')
+            bpy.data.collections.remove(temp_collection)
+            
+            self.report({'INFO'}, f"Successfully baked {self.resolution} resolution for {obj.name}.")
+            return {'FINISHED'}
 
 # ================== Tile Optimizer Operator ==================
 class XTD_OT_OptimizeTileResolution(global_settings.XTDToolsOperator):
@@ -606,20 +833,6 @@ class XTD_OT_AppendTrueHouse(global_settings.XTDToolsOperator):
         else:
             collection_name = f"{bpy.context.scene.xtd_custom_collection_name}"
         return bpy.ops.xtd_tools.transfermodels(source_mode="BLENDFILE", file_name="TRUE_HOUSE.blend", base_collection="COLLECTIONNAME", collection_name=collection_name)
-
-# ================ Bake Tile Operators ================
-class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
-    bl_idname = "xtd_tools.bake_tile_resolution"
-    bl_label = "Bake tile Resolution"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    resolution: bpy.props.StringProperty()
-    blend_file: bpy.props.StringProperty()
-
-    def process_object(self, obj):
-        print(f"Dummy operator executed for resolution: {self.resolution}")
-        return {'FINISHED'}
-
 
 
 # ================ Colorgrade Node Operators ================

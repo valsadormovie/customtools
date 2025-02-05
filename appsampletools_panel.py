@@ -1,8 +1,7 @@
-import bpy
-import importlib
-from . import (global_settings)
-from .global_settings import XTDToolsOperator, VisibilityController
-context=bpy.context
+#-------------------------------------------------
+#-APPSAMPLETOOLSPANEL.py
+#-------------------------------------------------
+from .global_settings import *
 
 # ================== PANEL =================
 class XTD_PT_AppnameTools(bpy.types.Panel):
@@ -17,7 +16,6 @@ class XTD_PT_AppnameTools(bpy.types.Panel):
         return VisibilityController.check_visibility(context, panel_name = "appsampletools_panel", require_selected=True, require_prefix=True)
         
     def draw(self, context):
-        # MAIN BUTTONS
         layout = self.layout
         layout.label(text="APP:")
         box = layout.box()
@@ -25,7 +23,6 @@ class XTD_PT_AppnameTools(bpy.types.Panel):
             row = box.row(align=True)
             row.operator("xtd_tools.appoperator", text="RUN", icon="OBJECT_DATAMODE")
         
-        #TOGGLE
         layout = self.layout
         row = layout.row()
         row.alignment = 'LEFT'
@@ -37,7 +34,6 @@ class XTD_PT_AppnameTools(bpy.types.Panel):
             grid.operator("xtd_tools.appoperator", text="APP", icon='MOD_WARP')
                 
 # ================ SCENES ================
-
 bpy.types.Scene.xtd_tools_sampleadstoggle = bpy.props.BoolProperty(name="APPS", default=False)
 bpy.types.Scene.forminput = bpy.props.StringProperty(name="", description="", default="Form Text")
 bpy.types.Scene.checkbox = bpy.props.BoolProperty(name="Checkbox text", description="", default=False)
@@ -50,7 +46,6 @@ bpy.types.Scene.switcher = bpy.props.EnumProperty(name='Switcher label',
     )
 
 # ================ OPERATORS ================
-
 # ----------- APP OPERATOR NAME -----------
 class XTD_OT_AppOperator(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.appoperator"
@@ -59,7 +54,6 @@ class XTD_OT_AppOperator(global_settings.XTDToolsOperator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def process_object(self, obj):
-        # App script
         return {'FINISHED'}
 
 
