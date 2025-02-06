@@ -29,11 +29,12 @@ class XTD_PT_UtilityTools(bpy.types.Panel):
             row.scale_x = 0.30
             row.prop(bpy.context.scene, "mergezaxis")
             row.scale_x = 0.40
+            check_selected_active_button(row)
             row.operator("xtd_tools.merge_by_distance", text="MERGE", icon="AREA_JOIN")
             
             row = box.row(align=True)
             row.separator()
-            row.operator("xtd_tools.smart_grid_merge", text="SMART MERGE", icon="AREA_JOIN")
+            row.operator("xtd_tools.smart_grid_merge", text="AUTO SMART MERGE", icon="AREA_JOIN")
             
         layout = self.layout
         box = layout.box()
@@ -41,14 +42,17 @@ class XTD_PT_UtilityTools(bpy.types.Panel):
             row = box.row(align=True)
             row.label(text="MESH TOOLS:", icon="MESH_DATA")
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.selectboundaryloops", text="Select Boundry loops", icon='SNAP_EDGE')
         for i in range(0,2,2):
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.tritoquad", text="Quad To Triangle", icon='MOD_TRIANGULATE')
             row.operator("xtd_tools.quadtotri", text="Triangle to Quad", icon='MOD_DECIM')
             
         for i in range(0,2,2):
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.disolvesharpedges", text="Disolve all sharp edges", icon='SHARPCURVE')
             row.operator("xtd_tools.nonmanifoldedgesplit", text="Nonmanifold Edgesplit", icon='MOD_EDGESPLIT')
             
@@ -58,6 +62,7 @@ class XTD_PT_UtilityTools(bpy.types.Panel):
             row = box.row(align=True)
             row.label(text="MATERIAL TOOLS:", icon="TEXTURE_DATA")
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.purgeunusedmaterial", text="PURGE UNUSED", icon='MATERIAL_DATA')
             row.operator("xtd_tools.remove_allmaterials", text="REMOVE ALL", icon="TRASH")
         
@@ -67,6 +72,7 @@ class XTD_PT_UtilityTools(bpy.types.Panel):
             row = box.row(align=True)
             row.label(text="OTHER:", icon="ORPHAN_DATA")
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.makeconvexhullobject", text="Transform to Convexhull", icon='MESH_CONE')
 
 bpy.types.Scene.mergezaxis = bpy.props.StringProperty(name="", description="Distance", default="200")
@@ -192,177 +198,74 @@ class XTD_OT_SmartGridMerge(global_settings.XTDToolsOperator):
     
     def execute(self, context):
         bl_label = self.bl_label
-        keyboard.add_hotkey("esc", global_settings.ProcessManager.stop)
-        global_settings.ProcessManager.start()
-        if not global_settings.ProcessManager.is_running():
-            self.report({'INFO'}, "Process stopped by user.")
-            bpy.context.preferences.edit.use_global_undo = True
-            return {'CANCELLED'}
-        bpy.ops.object.select_all(action = 'DESELECT')
-
-        blendfile_name = "BPEMPTY.blend"
-        master_txt_path = bpy.context.scene.master_txt_filepath
-        if not os.path.exists(master_txt_path):
-            print("ERROR: Master.txt file not found!")
-            return {'CANCELLED'}
-
-        master_data = {}
-        with open(master_txt_path, 'r') as file:
-            for line in file:
-                try:
-                    name, blendfile, _ = line.strip().split(" | ")
-                    master_data[name] = blendfile
-                except ValueError:
-                    continue
-        
         #-STATUS-BAR--------------------------------------------------------------------------
         global_settings.statusheader(bl_label,functiontext="Search Helper Grid blend file...")
         #-STATUS-BAR--------------------------------------------------------------------------
-        
-        blendfile_path = os.path.join(os.path.dirname(master_txt_path), blendfile_name)
-        if not os.path.exists(blendfile_path):
-            hex(f"ERROR: Blend file not found: {blendfile_path}", "#ff0000")
-            return {'CANCELLED'}
-        print(f"Blend file found: {blendfile_name} in {os.path.join(os.path.dirname(master_txt_path))}")
-        
-        
-        with bpy.data.libraries.load(blendfile_path, link=False) as (data_from, data_to):
-            data_to.objects = data_from.objects
-            
-        with alive_bar(len(data_to.objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
-            for obj in data_to.objects:
-                bpy.context.scene.collection.objects.link(obj)
-                bar()
-                
-                
-        bpy.context.view_layer.update()
-        
-        #-STATUS-BAR--------------------------------------------------------------------------
-        global_settings.statusheader(bl_label,functiontext="Detect small size base grids...")
-        #-STATUS-BAR--------------------------------------------------------------------------
-        
-        planes = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH' and obj.name.endswith('_E')]
-
+        bpy.ops.object.select_all(action='SELECT')
+        bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
         bpy.ops.object.select_all(action='DESELECT')
-        
-        smallbaseobjects = []
-        with alive_bar(len(planes), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
-            for plane in planes:
-                if not global_settings.ProcessManager.is_running():
-                    self.report({'INFO'}, "Process stopped by user.")
-                    bpy.context.preferences.edit.use_global_undo = True
-                    return {'CANCELLED'}
-                baseobject = bpy.data.objects.get(plane.name[:12])
-                plane=bpy.data.objects.get(plane.name)
-                if not baseobject:
-                    continue
-                if baseobject:
-                    # if baseobject.dimensions[0] < 412.3: 
-                    if baseobject.dimensions[0] < 412.5: 
-                        smallbaseobjects.append(baseobject)
-                        continue
-                        
-                    # if baseobject.dimensions[1] < 305.5: 
-                    if baseobject.dimensions[1] < 305.5:
-                        smallbaseobjects.append(baseobject)
-                        continue
-                    baseobject.name = baseobject.name + "_A"
-                bar() 
-                
-            bpy.ops.object.select_all(action='DESELECT')
-        
+        temp_collection = bpy.data.collections.get("TEMP_WORKING")
+        if not temp_collection:
+            temp_collection = bpy.data.collections.new("TEMP_WORKING")
+            bpy.context.scene.collection.children.link(temp_collection)
+            
+        external_blend_path = os.path.join(os.path.dirname(bpy.context.scene.master_txt_filepath), "BPEMPTY.blend")
+        scene_objects = {obj.name[:12] for obj in bpy.context.scene.objects}
+        matched_objects = set()
+
+        with bpy.data.libraries.load(external_blend_path, link=True) as (data_from, data_to):
+            external_objects = {obj[:12]: obj for obj in data_from.objects}
+            matched_objects = {external_objects[key] for key in scene_objects if key in external_objects}
+            data_to.objects = list(matched_objects)
+
+        for obj in data_to.objects:
+            if obj is not None:
+                temp_collection.objects.link(obj)
         #-STATUS-BAR--------------------------------------------------------------------------
         global_settings.statusheader(bl_label,functiontext="Copy plane origin to small base objects...")
         #-STATUS-BAR--------------------------------------------------------------------------
- 
-        bpy.ops.object.select_all(action='DESELECT')
-        smallbaseobjects = [obj for obj in smallbaseobjects if obj.type == 'MESH']
         
-        bpy.context.preferences.edit.use_global_undo = False
-        with alive_bar(len(smallbaseobjects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
-            for obj in smallbaseobjects:
-                if not global_settings.ProcessManager.is_running():
-                    self.report({'INFO'}, "Process stopped by user.")
-                    bpy.context.preferences.edit.use_global_undo = True
-                    return {'CANCELLED'}
-                bpy.ops.object.select_all(action='DESELECT')
-                plane = bpy.data.objects[obj.name[:12] + "_E"]
-                baseobject = bpy.data.objects[obj.name]
-                
-                source_obj = plane
-                source_obj.select_set(True)
-                
-                saved_location = bpy.data.scenes['Scene'].cursor.location.xyz
-                bpy.data.scenes['Scene'].cursor.location = plane.location
-                
-                target_obj = baseobject
-                target_obj.select_set(True)
-                bpy.context.view_layer.objects.active = target_obj
-                
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-                
-                bpy.data.scenes['Scene'].cursor.location.xyz = saved_location
-                baseobject.name = baseobject.name + "_A"
-                plane.select_set(True)
-                bpy.context.view_layer.objects.active = plane
-                bpy.data.objects.remove(plane)
+        temp_collection_objects = [o for o in temp_collection.objects]
+
+        saved_location = bpy.data.scenes['Scene'].cursor.location.xyz
+        
+        with alive_bar(len(temp_collection_objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
+            for obj in temp_collection_objects:
+                bpy.context.view_layer.objects.active = obj
+                baseobject = bpy.data.objects.get(obj.name[:12])
+                if baseobject:
+                    baseobject["merge"] = True
+                    bpy.data.scenes['Scene'].cursor.location = obj.location
+                    baseobject.select_set(True)
+                    bpy.context.view_layer.objects.active = baseobject
+                    bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                    obj.select_set(False)
+                    baseobject.select_set(False)
                 bar()
-                
             bpy.ops.object.select_all(action='DESELECT')
-        bpy.context.preferences.edit.use_global_undo = True
-        
-        bpy.context.view_layer.update()
+        bpy.data.scenes['Scene'].cursor.location.xyz = saved_location
         
         #-STATUS-BAR--------------------------------------------------------------------------
-        global_settings.statusheader(bl_label,functiontext="Clean unused helper planes...")
+        global_settings.statusheader(bl_label,functiontext="Purge helpers...")
         #-STATUS-BAR--------------------------------------------------------------------------
         
-        bpy.ops.object.select_all(action='DESELECT')
+        if len(temp_collection.objects) > 0:
+            for obj in temp_collection.objects:
+                temp_collection.objects.unlink(obj)
         
-        deleteotherplanes = [dobj for dobj in bpy.context.scene.objects if dobj.type == 'MESH' and dobj.name.endswith('_E')]
-                
-        bpy.context.preferences.edit.use_global_undo = False
-        with alive_bar(len(deleteotherplanes), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
-            for dobj in deleteotherplanes:
-                if not global_settings.ProcessManager.is_running():
-                    self.report({'INFO'}, "Process stopped by user.")
-                    bpy.context.preferences.edit.use_global_undo = True
-                    return {'CANCELLED'}
-                if dobj.name.endswith('_E'):
-                    dobj.select_set(True)
-                    bpy.context.view_layer.objects.active = dobj
-                    bpy.data.objects.remove(dobj)
-            
-                bar()
-                
-            bpy.ops.object.select_all(action='DESELECT')
-            
-        bpy.context.view_layer.update()
-        smallbaseobjectsfinal = [aobj for aobj in bpy.context.scene.objects if aobj.type == 'MESH' and aobj.name.endswith('_A')]
-        bpy.context.preferences.edit.use_global_undo = False
-        with alive_bar(len(smallbaseobjectsfinal), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
-            for aobj in smallbaseobjectsfinal:
-                if not global_settings.ProcessManager.is_running():
-                    self.report({'INFO'}, "Process stopped by user.")
-                    bpy.context.preferences.edit.use_global_undo = True
-                    return {'CANCELLED'}
-                if aobj.name.endswith('_A'):
-                    aobj.select_set(True)
-                
-                bpy.context.view_layer.objects.active = aobj
-            
-                bar()
-
+        if len(temp_collection.objects) == 0:
+            bpy.data.collections.remove(temp_collection)
         
-        bpy.context.view_layer.update()
-
+        main_objects = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH' and "merge" in obj]
+        with alive_bar(len(main_objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
+            for obj in main_objects:
+                obj.select_set(True)
+                bar()
+        
+        bpy.ops.xtd_tools.merge_by_distance()
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
         self.report({'INFO'}, "Smart Grid Merge completed successfully!")
-        ProcessManager.reset()
-        bpy.context.preferences.edit.use_global_undo = True
         return {'FINISHED'}
-
-
-
 
     
 class XTD_OT_mergebyname_grid_empty_cage(global_settings.XTDToolsOperator):
