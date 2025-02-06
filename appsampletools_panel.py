@@ -1,5 +1,5 @@
 #-------------------------------------------------
-#-APPSAMPLETOOLSPANEL.py
+#-APPSAMPLETOOLSPANEL.py | PANEL MODULE TEMPLATE FILE
 #-------------------------------------------------
 from .global_settings import *
 
@@ -35,9 +35,9 @@ class XTD_PT_AppnameTools(bpy.types.Panel):
                 
 # ================ SCENES ================
 bpy.types.Scene.xtd_tools_sampleadstoggle = bpy.props.BoolProperty(name="APPS", default=False)
-bpy.types.Scene.forminput = bpy.props.StringProperty(name="", description="", default="Form Text")
-bpy.types.Scene.checkbox = bpy.props.BoolProperty(name="Checkbox text", description="", default=False)
-bpy.types.Scene.switcher = bpy.props.EnumProperty(name='Switcher label',
+bpy.types.Scene.xtd_tools_forminput = bpy.props.StringProperty(name="", description="", default="Form Text")
+bpy.types.Scene.xtd_tools_checkbox = bpy.props.BoolProperty(name="Checkbox text", description="", default=False)
+bpy.types.Scene.xtd_tools_switcher = bpy.props.EnumProperty(name='Switcher label',
         items =  (
             ('YES','YES',''),
             ('NO','NO','')
