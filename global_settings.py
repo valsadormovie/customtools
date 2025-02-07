@@ -197,6 +197,11 @@ class ProcessManager:
         bpy.context.preferences.edit.use_global_undo = True
 
 
+# ================== PanelController ==================
+def check_selected_active_button(layout_type):
+    if len(bpy.context.selected_objects) < 1:
+        layout_type.enabled = False
+    
 # ================== VisibilityController ==================
 class VisibilityController:
     @classmethod
@@ -304,10 +309,18 @@ class UUIDManager:
         project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
 
         for obj in bpy.data.objects:
-            if "project_uuid" not in obj or not obj["project_uuid"]:
+            if "project_uuid" in obj or obj["project_uuid"]:
+                del obj["unique_id"]
+                del obj["project_uuid"]
+                unique_id = f"{obj.name[:12]}|{project_filename}"
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                obj["unique_id"] = f"{unique_id}"
+                obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
+            else:
                 unique_id = f"{obj.name[:12]}|{project_filename}"
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
+
 
     @staticmethod
     def deduplicate_project_uuids():
@@ -413,34 +426,59 @@ class XTD_OT_TransferModels(XTDToolsOperator):
             if self.objects == 'SELECTED':
                 try:
                     selected_objs = [o for o in bpy.context.selected_objects if "project_uuid" in o]
-
+                    selected_obj_names = [o.name for o in bpy.context.selected_objects if "project_uuid" in o]
+                    
+                    master_txt_filepath = bpy.context.scene.master_txt_filepath
+                    if not os.path.exists(master_txt_filepath):
+                        print(f"Master TXT file not found: {master_txt_filepath}")
+                        return None
+                    with open(master_txt_filepath, 'r') as file:
+                        lines = file.readlines()
+                    
+                    base_tile_name = None
+                    source_blendfile = None
+                    uuid_transfermode = None
                     selected_base_tile_names = set()
+                    selected_base_exits = set()
+
                     for obj in selected_objs:
                         uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
                         if uuid_data and uuid_data["uuid_base_tile_name"]:
-                            selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
+                            uuid_transfermode == {uuid_data["uuid_transfermode"]}
+                            if uuid_transfermode == "LINK":
+                                base_tile_name == {uuid_data["uuid_base_tile_name"]}
+                                source_blendfile == {uuid_data["uuid_source_blendfile"]}
+                                for line in lines:
+                                    name, blendfile, zoom = line.strip().split(" | ")
+                                    if name == base_tile_name and zoom == self.zoom_level and blendfile == source_blendfile:
+                                        selected_base_exits.add(obj["project_uuid"])
+                                        self.report({'WARNING'}, f"Source file for {obj.name} is invalid or missing.")
+                                        continue
+                                selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
+                            else:
+                                selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
                     
                     if self.replace_mode == 'REPLACE':
-                        self.replace_existing_objects(selected_base_tile_names)
+                        self.replace_existing_objects(selected_base_tile_names, selected_base_exits)
                     
-                    selected_objs = [o for o in bpy.context.selected_objects if "project_uuid" in o]
                     linked_objects = []
 
-                    for obj in selected_objs:
-                        uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                        if not uuid_data["uuid_base_tile_name"]:
-                            continue
-                        
-                        source_file = self.get_source_file_for_object(obj)
-                        if not source_file or not os.path.exists(source_file):
-                            self.report({'WARNING'}, f"Source file for {obj.name} is invalid or missing.")
-                            continue
-                        
-                        # Itt hívjuk a transfer_objects-t
-                        one_uuid_set = {uuid_data["uuid_base_tile_name"]}
-                        newly_linked = self.transfer_objects(source_file, one_uuid_set)
-                        if newly_linked:
-                            linked_objects.extend(newly_linked)
+                    for obj in selected_base_tile_names:
+                        obj = bpy.data.objects.get(obj)
+                        if obj:
+                            uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+                            if not uuid_data["uuid_base_tile_name"]:
+                                continue
+                            
+                            source_file = self.get_source_file_for_object(obj)
+                            if not source_file or not os.path.exists(source_file):
+                                self.report({'WARNING'}, f"Source file for {obj.name} is invalid or missing.")
+                                continue
+                            
+                            one_uuid_set = {uuid_data["uuid_base_tile_name"]}
+                            newly_linked = self.transfer_objects(source_file, one_uuid_set)
+                            if newly_linked:
+                                linked_objects.extend(newly_linked)
 
                     if not linked_objects:
                         self.report({'ERROR'}, "No objects were transferred.")
@@ -513,13 +551,12 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         return None
 
     def get_source_file(self, context):
-        def get_source_file(self, context):
-            master_folder = os.path.dirname(bpy.context.scene.master_txt_filepath)
-            if self.source_mode == 'MASTERFILE':
-                return self.get_master_file(context)
-            elif self.source_mode == 'BLENDFILE':
-                return os.path.join(master_folder, self.file_name)
-            return None
+        master_folder = os.path.dirname(bpy.context.scene.master_txt_filepath)
+        if self.source_mode == 'MASTERFILE':
+            return self.get_master_file(context)
+        elif self.source_mode == 'BLENDFILE':
+            return os.path.join(master_folder, self.file_name)
+        return None
     
     def get_master_file(self, context):
         master_txt_filepath = bpy.context.scene.master_txt_filepath
@@ -610,7 +647,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
 
 
 
-    def replace_existing_objects(self, selected_project_uuids):
+    def replace_existing_objects(self, selected_base_tile_names, selected_base_exits):
         temp_collection = self.collectionchecker()
         
         if not temp_collection or not temp_collection.objects:
@@ -621,8 +658,11 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         if temp_collection and temp_collection.objects:
             for obj in temp_collection.objects:
                 if "project_uuid" in obj:
+                    if obj["project_uuid"] in selected_base_exits:
+                        self.report({'INFO'}, f"{obj.name} in scene this zoom level.")
+                        continue
                     uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                    if uuid_data and uuid_data["uuid_base_tile_name"] in selected_project_uuids:
+                    if uuid_data and uuid_data["uuid_base_tile_name"] in selected_base_tile_names:
                         objects_to_replace.append((obj, uuid_data))
         
         for obj, uuid_data in objects_to_replace:

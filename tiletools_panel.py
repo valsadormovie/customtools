@@ -24,7 +24,11 @@ class XTD_PT_TileTools(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scene = bpy.context.scene
-        tile_name = bpy.context.active_object.name
+        tile_name = None 
+        
+        if bpy.context.active_object is not None:
+            tile_name = bpy.context.active_object.name
+
         
         row = layout.row(align=True)
         row.alignment = 'LEFT'
@@ -169,7 +173,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 ("HQ Land", "append_hq_land", False),
                 ("True Land", "append_true_land", False),
                 ("True House", "append_true_house", False),
-            ])
+            ], True)
 
             self.draw_accordion_box(context, layout, "COLOR GRADE NODE", "xtd_tools_colorgrade", 2, [
                 ("Add", "add_colorgrade", False),
@@ -186,7 +190,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 ("Shrinkwrap Remesh", "shrinkwrap_remesh", False),
                 ("Z Separator", "z_separator", False),
                 ("Tree Separator", "tree_separator", False),
-            ])
+            ], True)
 
             self.draw_accordion_box(context, layout, "MAIN SFX", "xtd_tools_main_sfx", 1, [
                 ("Add Duna, World, Sun", "add_duna", False),
@@ -215,6 +219,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 sub_row = grid.row(align=True)
                 sub_row.alert = not exists
                 sub_row.enabled = exists
+                check_selected_active_button(sub_row)
                 op = sub_row.operator(operator_id, text=zoom_level)
                 op.resolution = zoom_level
                 if scene.xtd_tools_tiletools_mode != "Optimize":
@@ -238,7 +243,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
                     row.operator(op_id, text=btn_label, icon=icon)
 
 
-    def draw_accordion_box(self, context, layout, label, prop_name, column_span, buttons):
+    def draw_accordion_box(self, context, layout, label, prop_name, column_span, buttons, require_selected=False):
         scene = bpy.context.scene
         row = layout.row()
         row.alignment = 'LEFT'
@@ -255,6 +260,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row = box.row(align=True)
                 grid = box.grid_flow(columns=int(column_span), align=True)
                 for button_text, operator, full_width in buttons:
+                    if require_selected:
+                        check_selected_active_button(grid)
                     if full_width:
                         grid.operator(f"xtd_tools.{operator}", text=button_text)
                     else:
@@ -264,6 +271,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 box = layout.box()
                 grid = box.grid_flow(columns=int(column_span), align=True)
                 for button_text, operator, full_width in buttons:
+                    if require_selected:
+                        check_selected_active_button(grid)
                     if full_width:
                         grid.operator(f"xtd_tools.{operator}", text=button_text)
                     else:
