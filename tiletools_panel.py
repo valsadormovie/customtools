@@ -58,10 +58,11 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row.label(text="Project UUID not found!", icon="ERROR")
         
         layout = self.layout
-        layout.label(text=f"TILE TRANSFER MODE:", icon="AREA_JOIN")
+        row = layout.row()
+        row.label(text="TILE TRANSFER MODE:", icon="AREA_JOIN")
+        layout = self.layout
         box = layout.box()
         row = box.row(align=True)
-        row.scale_x = 0.50
         row.prop(scene, "xtd_tools_tiletools_mode", text="")
 
         mode_ui_elements = {
@@ -95,6 +96,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
             },
             
         }
+        
+        layout = self.layout
 
         mode_settings = mode_ui_elements.get(scene.xtd_tools_tiletools_mode, {})
         
@@ -105,7 +108,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
                     row.alignment = 'EXPAND'
                     row.use_property_decorate = False
                     row.prop(scene, prop_name, text=label, icon="MOD_DATA_TRANSFER")
-        
+        layout = self.layout
+        row = box.row(align=True)
         if "label" in mode_settings:
             row = box.row(align=True)
             row.alignment = 'LEFT'
@@ -121,14 +125,34 @@ class XTD_PT_TileTools(bpy.types.Panel):
         
         if scene.xtd_tools_tiletools_mode == "Bake":
             layout = self.layout
-            row = box.row(align=True)
+            
             row.separator()
-            row.prop(scene, "xtd_tools_bake_texture_mode", expand=True)
             row = layout.row()
+            row.prop(scene, "xtd_tools_bake_texture_mode", expand=True)
+            row = box.row(align=True)
+            row.alignment = 'EXPAND'
+            row.use_property_split = True
+            row.use_property_decorate = False
+            row.label(text="", icon='TEXTURE')
+            row.prop(scene, "xtd_tools_bake_texture_resolution", text="MODE")
             row.alignment = 'LEFT'
             if scene.xtd_tools_bake_texture_mode == "EXTENDED":
+                layout = self.layout
+                row = layout.row()
+                row.label(text="BAKE SETTINGS:")
+                layout = self.layout
+                box = layout.box()
                 row = box.row(align=True)
+                grid = box.grid_flow(columns=2, align=True)
+                grid.prop(bpy.context.scene, "xtd_custom_bake_extrusion")
+                grid.prop(bpy.context.scene, "xtd_custom_bake_raydistance")
+                
+                layout = self.layout
+                row = layout.row()
                 row.label(text="CREATE NEW:")
+                layout = self.layout
+                box = layout.box()
+                
                 row = box.row(align=True)
                 row.alignment = 'EXPAND'
                 row.use_property_split = True
@@ -150,13 +174,13 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row.label(text="", icon='MATERIAL')
                 row.prop(scene, "xtd_tools_bake_newmaterial", expand=True)
                 
-                row = box.row(align=True)
-                row.alignment = 'EXPAND'
-                row.use_property_split = True
-                row.use_property_decorate = False
-                row.label(text="", icon='TEXTURE')
-                row.prop(scene, "xtd_tools_bake_texture_resolution", text="MODE")
-                row = box.row(align=True)
+                
+                layout = self.layout
+                row = layout.row()
+                row.label(text="SOURCE TILE RESOLUTION:")
+            if scene.xtd_tools_bake_texture_mode == "SIMPLE":
+                layout = self.layout
+                row = layout.row()
                 row.label(text="SOURCE TILE RESOLUTION:")
         
         if scene.xtd_tools_tiletools_mode == "Helper":
@@ -201,6 +225,9 @@ class XTD_PT_TileTools(bpy.types.Panel):
             ])
             
         else:
+            layout = self.layout
+            row = layout.row()
+            box = layout.box()
             row = box.row(align=True)
             grid = row.grid_flow(columns=4, align=True)
 
@@ -224,7 +251,21 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 op.resolution = zoom_level
                 if scene.xtd_tools_tiletools_mode != "Optimize":
                     op.blend_file = blendfile
+                    
+            layout = self.layout
+            row = layout.row()
+            row = box.row(align=True)
+            layout.label(text="UNLINK TARGET COLLETION:")
+            box = layout.box()
+            row = box.row(align=True)
 
+            row.prop(scene, "linked_target_collection", text="")
+            row = box.row(align=True)
+            row.prop(scene, "tile_unlinking_mode", expand=True)
+            row.separator()
+            row = box.row(align=True)
+            row.operator(f"xtd_tools.unlink_all_tiles", text="UNLINK ALL")
+            
             if "extra_props" in mode_settings:
                 for prop_name, label in mode_settings["extra_props"]:
                     if prop_name != "xtd_tools_transferreplacemode":
@@ -303,6 +344,8 @@ class XTD_PT_TileTools(bpy.types.Panel):
 # ================ SCENES ================
 bpy.types.Scene.xtd_tools_tile_helper = bpy.props.BoolProperty(name="Tile Helper", default=False)
 bpy.types.Scene.xtd_tools_selectedobjectdata = bpy.props.BoolProperty(name="OBJECT DATA", default=False)
+bpy.types.Scene.xtd_custom_bake_extrusion = bpy.props.StringProperty(name="EXTR", description="", default="0.5")
+bpy.types.Scene.xtd_custom_bake_raydistance = bpy.props.StringProperty(name="DIST", description="", default="100")
 bpy.types.Scene.xtd_custom_collection_name = bpy.props.StringProperty(name="NAME", description="Custom destination", default="")
 bpy.types.Scene.xtd_tools_transferreplacemode = bpy.props.BoolProperty(name="Replace mode", default=False)
 bpy.types.Scene.xtd_tools_colorgrade = bpy.props.BoolProperty(name="Colorgrade Node", default=False)
@@ -363,6 +406,8 @@ bpy.types.Scene.xtd_tools_bake_newmaterial = bpy.props.EnumProperty(name='MATERI
 bpy.types.Scene.xtd_tools_bake_texture_resolution = bpy.props.EnumProperty(
     name="Bake Texture Resolution",
     items=[
+        ("256", "256x256", ""),
+        ("512", "512x512", ""),
         ("1024", "1024x1024", ""),
         ("2048", "2048x2048", ""),
         ("4096", "4096x4096", ""),
@@ -421,8 +466,6 @@ class XTD_OT_RemoveShows(global_settings.XTDToolsOperator):
         self.report({'INFO'}, "Zoom level highlights removed.")
         return {'FINISHED'}
 
-
-
 # ================== Auto add UUID Operators ==================
 class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.adduuid"
@@ -437,22 +480,26 @@ class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
         PROPERTY_PROJECT_UUID = "project_uuid"
         blend_name = sanitize_name(os.path.splitext(os.path.basename(bpy.data.filepath))[0])
         has_changes = False
-
+        project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
         for obj in bpy.data.objects:
-            obj.data.name = obj.name
             if obj.type == 'MESH':
-                object_name = sanitize_name(obj.name)
-                unique_id = f"{object_name}|{blend_name}"
+                obj = bpy.data.objects.get(obj.name)
+                if obj:
+                
+                    object_name = sanitize_name(obj.name)
+                    unique_id = f"{object_name}|{blend_name}"
 
-                if PROPERTY_UNIQUE_ID not in obj:
-                    obj[PROPERTY_UNIQUE_ID] = unique_id
-                    has_changes = True
+                    if PROPERTY_UNIQUE_ID not in obj:
+                        obj[PROPERTY_UNIQUE_ID] = unique_id
+                        has_changes = True
 
-                if PROPERTY_PROJECT_UUID not in obj:
-                    obj[PROPERTY_PROJECT_UUID] = ""
-                    has_changes = True
+                    if PROPERTY_PROJECT_UUID not in obj:
+                        obj[PROPERTY_PROJECT_UUID] = ""
+                        has_changes = True
 
-                obj.id_properties_ensure()
+                    unique_id = f"{obj.name[:12]}|{project_filename}"
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
                 
         for obj in bpy.data.objects:
             if obj.type == 'MESH':
@@ -465,9 +512,64 @@ class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
             PopupController(title="UUID GENERATOR", message=f"{blend_name}.blend fájl már tartalmazza az összes szükséges property-t.", buttons=[("OK", None, "CHECKMARK")])
         return {'FINISHED'}
 
-
-
 # ================== Tile Append/Link Operators ==================
+class XTD_OT_UnlinkTileResolutions(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.unlink_all_tiles"
+    bl_label = "Unlink"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        temp_collection = bpy.context.scene.linked_target_collection
+        if not temp_collection:
+            self.report({'WARNING'}, "No collection selected for LOD replacement.")
+            return {'CANCELLED'}
+        unlinked_objs = []
+        for obj in temp_collection.objects:
+            uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+            if uuid_data and uuid_data["uuid_base_tile_name"]:
+                base_tile_name = {uuid_data["uuid_base_tile_name"]}
+                print(f'Selected: {base_tile_name}, MODE: {bpy.context.scene.tile_unlinking_mode}')
+                if bpy.context.scene.tile_unlinking_mode == "Selected":
+                    if obj in bpy.context.selected_objects:
+                        base_tile_name = {uuid_data["uuid_base_tile_name"]}
+                        print(f'Selected: {base_tile_name}, MODE: {bpy.context.scene.tile_unlinking_mode}')
+                        unlinked_objs.append(obj["project_uuid"])
+                        
+                else:
+                    print(f'Not selected: {base_tile_name}, MODE: {bpy.context.scene.tile_unlinking_mode}')
+                    base_tile_name = {uuid_data["uuid_base_tile_name"]}
+                    unlinked_objs.append(obj["project_uuid"])
+        
+        
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH':
+                if obj["project_uuid"]:
+                    uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+                    if obj["project_uuid"] in unlinked_objs:
+                        bpy.data.objects.remove(obj, do_unlink=True)
+                    else:
+                        if uuid_data and uuid_data["uuid_base_tile_name"]:
+                            bpy.data.objects[obj.name].hide_set(False)
+        
+
+        return {'FINISHED'}
+
+bpy.types.Scene.linked_target_collection = bpy.props.PointerProperty(
+    name="Target Collection",
+    type=bpy.types.Collection,
+    description="Select the collection to replace LODs"
+)
+
+bpy.types.Scene.tile_unlinking_mode = bpy.props.EnumProperty(
+    items=[
+        ('ALL', "All", ""),
+        ('SELECTED', "Selected", ""),
+        
+    ],
+    name="Tile Unlinking Mode",
+    default="SELECTED"
+)
+
 class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.append_tile_resolution"
     bl_label = "Append tile resolution"
@@ -514,55 +616,39 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
     blend_file: bpy.props.StringProperty()
 
     def execute(self, context):
+        scene = bpy.context.scene
         import io
         from contextlib import redirect_stdout
-
+        keyboard.add_hotkey("esc", ProcessManager.stop)
+        ProcessManager.start()
         stdout = io.StringIO()
+        
+        extrusion = float(scene.xtd_custom_bake_extrusion)
+        raydistance = float(scene.xtd_custom_bake_raydistance)
+        
+        selected_objects = bpy.context.selected_objects
+        if not selected_objects:
+            self.report({'WARNING'}, "No objects selected.")
+            return {'CANCELLED'}
+        selected_objects = [obj for obj in selected_objects]
+        
         statusheader(bl_label="Bake tile Resolution", functiontext="Working selected objects...")
-        with redirect_stdout(stdout):
-            scene = bpy.context.scene
-            scene.render.engine = 'CYCLES'
-            scene.cycles.feature_set = 'EXPERIMENTAL'
-            scene.cycles.device = 'GPU'
-            scene.cycles.use_denoising = False
-            scene.cycles.samples = 4
-            scene.cycles.preview_samples = 4
-            scene.cycles.max_bounces = 4
-            scene.cycles.diffuse_bounces = 4
-            scene.cycles.glossy_bounces = 0
-            scene.cycles.transmission_bounces = 0
-            scene.cycles.volume_bounces = 0
-            scene.cycles.transparent_max_bounces = 0
-            scene.cycles.sample_clamp_direct = 0
-            scene.cycles.sample_clamp_indirect = 2
-            scene.cycles.blur_glossy = 1
-            scene.cycles.caustics_reflective = False
-            scene.cycles.caustics_refractive = False
-            scene.cycles.use_auto_tile = False
-            scene.cycles.bake_type = 'DIFFUSE'
-            scene.render.bake.use_pass_direct = False
-            scene.render.bake.use_pass_indirect = False
-            scene.render.bake.use_selected_to_active = True
-            scene.render.bake.cage_extrusion = 0.5
-            scene.render.bake.max_ray_distance = 50
-            
-            selected_objects = bpy.context.selected_objects
-            if not selected_objects:
-                self.report({'WARNING'}, "No objects selected.")
-                return {'CANCELLED'}
-
-            selected_objects = [obj for obj in selected_objects]
-            temp_collection_name = "TEMP_BAKE"
-            texture_resolution = int(scene.xtd_tools_bake_texture_resolution)
-            
-            bpy.ops.object.select_all(action = 'DESELECT')
-            global_settings.UUIDManager.ensure_project_uuid()
-            global_settings.UUIDManager.deduplicate_project_uuids()
-            
-            
-            with alive_bar(len(selected_objects), title='   ', length=50, max_cols=98, bar='filling') as bar:
+        with alive_bar(len(selected_objects), title='   ', length=50, max_cols=98, bar='filling') as bar:
+            with redirect_stdout(stdout):
+                bake_render_settings()
+                bpy.context.scene.render.bake.target = 'IMAGE_TEXTURES'
+                
+                temp_collection_name = "TEMP_BAKE"
+                texture_resolution = int(scene.xtd_tools_bake_texture_resolution)
+                
+                bpy.ops.object.select_all(action = 'DESELECT')
+                global_settings.UUIDManager.ensure_project_uuid()
+                global_settings.UUIDManager.deduplicate_project_uuids()
                 
                 for obj in selected_objects:
+                    if not ProcessManager.is_running():
+                        self.report({'INFO'}, "Process stopped by user.")
+                        return {'CANCELLED'}
                     bpy.ops.object.select_all(action = 'DESELECT')
                     obj = bpy.data.objects[obj.name]
                     obj.select_set(True)
@@ -644,12 +730,13 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
                     for linked_obj in linked_objects:
                         temp_collection.objects.unlink(linked_obj)
                     bar()
+                    bpy.ops.image.save_all_modified()
                 bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
                 bpy.ops.object.select_all(action = 'DESELECT')
                     
             bpy.ops.object.select_all(action = 'DESELECT')
             bpy.data.collections.remove(temp_collection)
-            
+            ProcessManager.reset()
             self.report({'INFO'}, f"Successfully baked {self.resolution} resolution for {obj.name}.")
             return {'FINISHED'}
 

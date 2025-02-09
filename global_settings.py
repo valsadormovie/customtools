@@ -33,11 +33,13 @@ from colorist import hex, bg_hex, ColorHex, BgColorHex
 # ================== REGISTERED PANEL TOOLS ==================
 panels = [
     "global_settings",
-    "modifiertools_panel",
-    "transformtools_panel",
-    "vertexgrouptools_panel",
-    "utilitytools_panel",
     "tiletools_panel",
+    "tilelodcamera_panel",
+    "modifiertools_panel",
+    "vertexgrouptools_panel",
+    "vertexcolortools_panel",
+    "utilitytools_panel",
+    "transformtools_panel",
     "scriptrunner_panel"
 ]
 
@@ -118,8 +120,8 @@ class XTDToolsOperator(bpy.types.Operator):
     
     def execute(self, context):
         bl_label = self.bl_label
+        statusheader(bl_label, functiontext="Working selected objects...")
         self.__class__._processed_objects.clear()
-        bpy.context.preferences.edit.use_global_undo = False
         
         selected_objects = bpy.context.selected_objects
        
@@ -140,20 +142,17 @@ class XTDToolsOperator(bpy.types.Operator):
             batch_objects = selected_objects[batch_index * batch_size: (batch_index + 1) * batch_size]
             if not ProcessManager.is_running():
                 self.report({'INFO'}, "Process stopped by user.")
-                bpy.context.preferences.edit.use_global_undo = True
                 return {'CANCELLED'}
-            statusheader(bl_label, functiontext="Working selected objects...")
+            
             if total_batches > 1: 
                 print_status(batch_index + 1, total_batches, total_objects, batch_index * batch_size + len(batch_objects))
             with alive_bar(len(batch_objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
                 for obj in batch_objects:
                     if not ProcessManager.is_running():
                         self.report({'INFO'}, "Process stopped by user.")
-                        bpy.context.preferences.edit.use_global_undo = True
                         return {'CANCELLED'}
                     self.process_object(obj)
                     self.__class__._processed_objects.add(obj.name)
-                    bpy.context.preferences.edit.use_global_undo = True
                     bar()
 
             if bpy.context.scene.export_ply == "YES":
@@ -163,10 +162,8 @@ class XTDToolsOperator(bpy.types.Operator):
                         
         if bpy.context.scene.shutdown_after == "YES":
             threading.Thread(target=shutdown_computer).start()
-
         ProcessManager.reset()
         self.report({'INFO'}, "Process completed.")
-        bpy.context.preferences.edit.use_global_undo = True
         return {'FINISHED'}
 
     def process_object(self, obj):
@@ -190,6 +187,7 @@ class ProcessManager:
     @classmethod
     def start(cls):
         cls._is_running = True
+        bpy.context.preferences.edit.use_global_undo = False
 
     @classmethod
     def reset(cls):
@@ -306,20 +304,24 @@ class UUIDManager:
 
     @staticmethod
     def ensure_project_uuid():
+        
         project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
-
+        
         for obj in bpy.data.objects:
-            if "project_uuid" in obj or obj["project_uuid"]:
-                del obj["unique_id"]
-                del obj["project_uuid"]
-                unique_id = f"{obj.name[:12]}|{project_filename}"
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                obj["unique_id"] = f"{unique_id}"
-                obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
-            else:
-                unique_id = f"{obj.name[:12]}|{project_filename}"
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
+            if obj.type == 'MESH': 
+                obj = bpy.data.objects.get(obj.name)
+                if obj:
+                    if "project_uuid" in obj or obj["project_uuid"]:
+                        del obj["unique_id"]
+                        del obj["project_uuid"]
+                        unique_id = f"{obj.name[:12]}|{project_filename}"
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        obj["unique_id"] = f"{unique_id}"
+                        obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
+                    else:
+                        unique_id = f"{obj.name[:12]}|{project_filename}"
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
 
 
     @staticmethod
@@ -327,16 +329,16 @@ class UUIDManager:
         seen_uuids = {}
         
         for obj in bpy.data.objects:
-            if not obj.get("project_uuid"):
-                uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                if uuid_data["uuid_transfermode"] != "LINK":
-                    base_uuid = "|".join(obj["project_uuid"].split("|")[:-1])
+            if obj.type == 'MESH':
+                if not obj.get("project_uuid"):
+                    uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+                    if uuid_data["uuid_transfermode"] != "LINK":
+                        base_uuid = "|".join(obj["project_uuid"].split("|")[:-1])
 
-                    if base_uuid in seen_uuids and obj["project_uuid"] == seen_uuids[base_uuid]:
-                        obj["project_uuid"] = f"{base_uuid}|{UUIDManager.generate_random_hash()}"
-                    else:
-                        seen_uuids[base_uuid] = True
-
+                        if base_uuid in seen_uuids and obj["project_uuid"] == seen_uuids[base_uuid]:
+                            obj["project_uuid"] = f"{base_uuid}|{UUIDManager.generate_random_hash()}"
+                        else:
+                            seen_uuids[base_uuid] = True
 
 # ================== MAIN TRANSFER ENGINE ==================
 class XTD_OT_TransferModels(XTDToolsOperator):
@@ -440,7 +442,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                     uuid_transfermode = None
                     selected_base_tile_names = set()
                     selected_base_exits = set()
-
+                    
                     for obj in selected_objs:
                         uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
                         if uuid_data and uuid_data["uuid_base_tile_name"]:
@@ -455,14 +457,16 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                                         self.report({'WARNING'}, f"Source file for {obj.name} is invalid or missing.")
                                         continue
                                 selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
+                                obj.hide_set(True)
                             else:
                                 selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
-                    
+                                obj.hide_set(True)
+                            
                     if self.replace_mode == 'REPLACE':
                         self.replace_existing_objects(selected_base_tile_names, selected_base_exits)
                     
                     linked_objects = []
-
+                    
                     for obj in selected_base_tile_names:
                         obj = bpy.data.objects.get(obj)
                         if obj:
@@ -642,6 +646,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         temp_collection = bpy.data.collections.get(collection_destination)
         if not temp_collection:
             temp_collection = bpy.data.collections.new(collection_destination)
+            temp_collection.color_tag = "COLOR_01"
             bpy.context.scene.collection.children.link(temp_collection)
         return temp_collection
 
@@ -664,12 +669,15 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                     uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
                     if uuid_data and uuid_data["uuid_base_tile_name"] in selected_base_tile_names:
                         objects_to_replace.append((obj, uuid_data))
-        
+                        
+
         for obj, uuid_data in objects_to_replace:
             if uuid_data["uuid_transfermode"] == "APPEND":
-                bpy.data.objects.remove(obj)
+                bpy.data.objects.remove(obj, do_unlink=True)
             elif uuid_data["uuid_transfermode"] == "LINK":
                 temp_collection.objects.unlink(obj)
+                bpy.data.objects.remove(obj, do_unlink=True)
+
         
         return {'FINISHED'}
 
@@ -830,6 +838,35 @@ def print_status(batch_index, total_batches, total_objects, current_index):
 
 
 # ================== BASE FUNCTIONS ==================
+def bake_render_settings():
+    scene = bpy.context.scene
+    scene.render.engine = 'CYCLES'
+    extrusion = float(scene.xtd_custom_bake_extrusion)
+    raydistance = float(scene.xtd_custom_bake_raydistance)
+    scene.cycles.feature_set = 'EXPERIMENTAL'
+    scene.cycles.device = 'GPU'
+    scene.cycles.use_denoising = False
+    scene.cycles.samples = 4
+    scene.cycles.preview_samples = 4
+    scene.cycles.max_bounces = 4
+    scene.cycles.diffuse_bounces = 4
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+    scene.cycles.volume_bounces = 0
+    scene.cycles.transparent_max_bounces = 0
+    scene.cycles.sample_clamp_direct = 0
+    scene.cycles.sample_clamp_indirect = 2
+    scene.cycles.blur_glossy = 1
+    scene.cycles.caustics_reflective = False
+    scene.cycles.caustics_refractive = False
+    scene.cycles.use_auto_tile = False
+    scene.cycles.bake_type = 'DIFFUSE'
+    scene.render.bake.use_pass_direct = False
+    scene.render.bake.use_pass_indirect = False
+    scene.render.bake.use_selected_to_active = True
+    scene.render.bake.cage_extrusion = extrusion
+    scene.render.bake.max_ray_distance = raydistance
+
 def global_deselect(context, all_objects=False):
     if all_objects:
         for obj in bpy.context.scene.objects:
