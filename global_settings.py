@@ -1,7 +1,4 @@
-#----------------------------------------------------------
-#-GLOBAL_SETTINGS.py
-#----------------------------------------------------------
-#  ================== IMPORTED LIBRARYS ================== 
+# global_settings.py
 import importlib
 import inspect
 import datetime
@@ -20,8 +17,7 @@ from bpy.props import EnumProperty, StringProperty, BoolProperty
 from mathutils import Vector, Quaternion
 from bpy import context
 
-
-# ================== THIRDPARTY MODULE LIBRARYS ==================
+# Harmadik féltől származó modulok
 import grapheme
 import numpy as np
 from mathutils.kdtree import KDTree
@@ -29,8 +25,7 @@ from alive_progress import alive_bar
 from about_time import about_time
 from colorist import hex, bg_hex, ColorHex, BgColorHex
 
-
-# ================== REGISTERED PANEL TOOLS ==================
+# Regisztrált paneleket tartalmazó lista
 panels = [
     "global_settings",
     "tiletools_panel",
@@ -43,16 +38,16 @@ panels = [
     "scriptrunner_panel"
 ]
 
-
-# ================== MAIN PANEL SCRIPTS ==================
+# Panel láthatóság és globális változók
 panel_visibility = {panel: True for panel in panels}
 registered_classes = []
 global_functions = {}
 registered_properties = []
 global_settings = None
 
-
-# ================== GLOBAL SETTINGS PANEL ==================
+# =============================================
+# GLOBAL SETTINGS PANEL
+# =============================================
 class XTD_GlobalSettingsPanel(bpy.types.Panel):
     bl_label = "GLOBAL SETTINGS"
     bl_idname = "XTD_PT_global_settings"
@@ -111,8 +106,9 @@ class XTD_GlobalSettingsPanel(bpy.types.Panel):
                 label_text = panel.replace("_panel", "").replace("_", " ").title()
                 row.prop(scene, prop_name, text=label_text, icon="TOOL_SETTINGS")
 
-
-# ================== GLOBAL EXECUTE OPERATOR ==================
+# =============================================
+# GLOBAL EXECUTE OPERATOR
+# =============================================
 class XTDToolsOperator(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     batch_mode = False
@@ -169,8 +165,9 @@ class XTDToolsOperator(bpy.types.Operator):
     def process_object(self, obj):
         raise NotImplementedError("Subclasses must implement process_object method")
 
-
-# ================== PROCESS MANAGER ==================
+# =============================================
+# PROCESS MANAGER
+# =============================================
 class ProcessManager:
     _is_running = True
 
@@ -194,13 +191,9 @@ class ProcessManager:
         cls._is_running = True
         bpy.context.preferences.edit.use_global_undo = True
 
-
-# ================== PanelController ==================
-def check_selected_active_button(layout_type):
-    if len(bpy.context.selected_objects) < 1:
-        layout_type.enabled = False
-    
-# ================== VisibilityController ==================
+# =============================================
+# VISIBILITY CONTROLLER
+# =============================================
 class VisibilityController:
     @classmethod
     def check_visibility(cls, context, panel_name, require_selected=False, require_active=False, require_prefix=None):
@@ -239,9 +232,9 @@ class VisibilityController:
     def toggle_panel_visibility(cls, panel_name, visible):
         panel_class_name = cls.get_panel_class_name(panel_name)
         panel_visibility[panel_name] = visible
-        for cls in bpy.types.Panel.__subclasses__():
-            if cls.__name__ == panel_class_name:
-                cls.poll = lambda self, context: cls.check_visibility(context, panel_name)
+        for cls_panel in bpy.types.Panel.__subclasses__():
+            if cls_panel.__name__ == panel_class_name:
+                cls_panel.poll = lambda self, context: VisibilityController.check_visibility(context, panel_name)
 
     @classmethod
     def update_visibility(cls, panel=None):
@@ -266,17 +259,20 @@ bpy.types.Scene.tool_visibility_mode = bpy.props.EnumProperty(
     items=[
         ('INTUITIVE', "Intuitive", ""),
         ('DEFAULT', "Default", ""),
-        
     ],
     name="Tool Visibility Mode",
     default="DEFAULT"
 )
 
-
-# ================== UUIDManager ==================
+# =============================================
+# UUID MANAGER
+# =============================================
 class UUIDManager:
     @staticmethod
     def parse_project_uuid(project_uuid):
+        if project_uuid is None:
+            obj = bpy.context.active_object
+            UUIDManager.create_object_uuid(obj)
         if not project_uuid or "|" not in project_uuid:  # Ha üres vagy rossz formátumú
             return {
                 "uuid_working_project": "",
@@ -297,23 +293,27 @@ class UUIDManager:
             "uuid_unique_hash": parts[5] if len(parts) > 5 else ""
         }
 
-
     @staticmethod
     def generate_random_hash(length=8):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
     @staticmethod
     def ensure_project_uuid():
-        
         project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
-        
         for obj in bpy.data.objects:
             if obj.type == 'MESH': 
                 obj = bpy.data.objects.get(obj.name)
                 if obj:
-                    if "project_uuid" in obj or obj["project_uuid"]:
-                        del obj["unique_id"]
-                        del obj["project_uuid"]
+                    if "project_uuid" not in obj:
+                        UUIDManager.create_object_uuid(obj)
+                    if "unique_id" not in obj:
+                        UUIDManager.create_object_uuid(obj)
+                    if "project_uuid" in obj and obj["project_uuid"]:
+                        try:
+                            del obj["unique_id"]
+                            del obj["project_uuid"]
+                        except Exception as e:
+                            print(f"Hiba a property törlésekor: {e}")
                         unique_id = f"{obj.name[:12]}|{project_filename}"
                         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         obj["unique_id"] = f"{unique_id}"
@@ -323,24 +323,55 @@ class UUIDManager:
                         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
 
+    @staticmethod
+    def create_object_uuid(obj):
+        def sanitize_name(name):
+            return name.replace(" ", "_")
+        
+        PROPERTY_UNIQUE_ID = "unique_id"
+        PROPERTY_PROJECT_UUID = "project_uuid"
+        blend_name = sanitize_name(os.path.splitext(os.path.basename(bpy.data.filepath))[0])
+        project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
+        if obj:
+            object_name = sanitize_name(obj.name)
+            unique_id = f"{object_name}|{blend_name}"
+            if PROPERTY_UNIQUE_ID not in obj:
+                obj[PROPERTY_UNIQUE_ID] = unique_id
+            if PROPERTY_PROJECT_UUID not in obj:
+                obj[PROPERTY_PROJECT_UUID] = ""
+            unique_id = f"{obj.name[:12]}|{project_filename}"
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
+            if PROPERTY_PROJECT_UUID in obj:
+                obj.property_overridable_library_set('["project_uuid"]', True)
 
     @staticmethod
     def deduplicate_project_uuids():
         seen_uuids = {}
-        
         for obj in bpy.data.objects:
-            if obj.type == 'MESH':
-                if not obj.get("project_uuid"):
-                    uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                    if uuid_data["uuid_transfermode"] != "LINK":
-                        base_uuid = "|".join(obj["project_uuid"].split("|")[:-1])
+            if obj.type == 'MESH' and obj.get("project_uuid"):
+                uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+                if uuid_data["uuid_transfermode"] != "LINK":
+                    base_uuid = "|".join(obj["project_uuid"].split("|")[:-1])
+                    if base_uuid in seen_uuids and obj["project_uuid"] == seen_uuids[base_uuid]:
+                        obj["project_uuid"] = f"{base_uuid}|{UUIDManager.generate_random_hash()}"
+                    else:
+                        seen_uuids[base_uuid] = obj["project_uuid"]
 
-                        if base_uuid in seen_uuids and obj["project_uuid"] == seen_uuids[base_uuid]:
-                            obj["project_uuid"] = f"{base_uuid}|{UUIDManager.generate_random_hash()}"
-                        else:
-                            seen_uuids[base_uuid] = True
+# =============================================
+# MAIN TRANSFER ENGINE
+# =============================================
+import bpy
+import os
+import datetime
+import random
+import string
+from alive_progress import alive_bar
 
-# ================== MAIN TRANSFER ENGINE ==================
+# Feltételezzük, hogy XTDToolsOperator és UUIDManager már definiálva vannak a projektedben.
+# Példa:
+# from .global_settings_base import XTDToolsOperator, UUIDManager
+
 class XTD_OT_TransferModels(XTDToolsOperator):
     bl_idname = "xtd_tools.transfermodels"
     bl_label = "Transfer Models"
@@ -361,7 +392,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
 
     file_name: bpy.props.StringProperty(
         name="File Name",
-        description="Specify the blend file name for BLENDFILENAME mode",
+        description="Specify the blend file name for BLENDFILE mode",
         default=""
     )
 
@@ -402,131 +433,128 @@ class XTD_OT_TransferModels(XTDToolsOperator):
     )
 
     base_collection: bpy.props.EnumProperty(
-        items=[('TEMP_LINKED', "Temp linked", ""), ('SCENE', "Scene", ""), ('COLLECTIONNAME', "Collectionname", "")],
+        items=[('TEMP_LINKED', "Temp linked", ""),
+               ('SCENE', "Scene", ""),
+               ('COLLECTIONNAME', "Collection Name", "")],
         name="Collection transfer destination",
         default='TEMP_LINKED'
     )
     
     collection_name: bpy.props.StringProperty(
         name="Collection Name",
-        description="Specify collection bane",
+        description="Specify collection name",
         default=""
     )
 
     def execute(self, context):
+        # Ha a node_group vagy world meg van adva, azt külön kezeljük:
         if self.node_group.strip() != "" or self.world.strip() != "":
-            result = self.process_utils(context, source_file)
+            result = self.process_utils(context, None)
             if 'CANCELLED' in result:
                 return result
-            self.report({'INFO'}, "Successfully linked node group.")
+            self.report({'INFO'}, "Successfully linked node group or world.")
             return {'FINISHED'}
-        else:
-            selected_project_uuids = set()
-            
-            linked_objects = []
-    
-            if self.objects == 'SELECTED':
-                try:
-                    selected_objs = [o for o in bpy.context.selected_objects if "project_uuid" in o]
-                    selected_obj_names = [o.name for o in bpy.context.selected_objects if "project_uuid" in o]
-                    
-                    master_txt_filepath = bpy.context.scene.master_txt_filepath
-                    if not os.path.exists(master_txt_filepath):
-                        print(f"Master TXT file not found: {master_txt_filepath}")
-                        return None
-                    with open(master_txt_filepath, 'r') as file:
-                        lines = file.readlines()
-                    
-                    base_tile_name = None
-                    source_blendfile = None
-                    uuid_transfermode = None
-                    selected_base_tile_names = set()
-                    selected_base_exits = set()
-                    
-                    for obj in selected_objs:
-                        uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                        if uuid_data and uuid_data["uuid_base_tile_name"]:
-                            uuid_transfermode == {uuid_data["uuid_transfermode"]}
-                            if uuid_transfermode == "LINK":
-                                base_tile_name == {uuid_data["uuid_base_tile_name"]}
-                                source_blendfile == {uuid_data["uuid_source_blendfile"]}
-                                for line in lines:
+
+        # Fő ágon: a modellek behozatala (transfer)
+        selected_base_tile_names = set()
+        selected_base_exits = set()
+
+        if self.objects == 'SELECTED':
+            try:
+                selected_objs = [o for o in bpy.context.selected_objects if "project_uuid" in o]
+                master_txt_filepath = bpy.context.scene.master_txt_filepath
+                if not os.path.exists(master_txt_filepath):
+                    self.report({'ERROR'}, f"Master TXT file not found: {master_txt_filepath}")
+                    return {'CANCELLED'}
+                with open(master_txt_filepath, 'r') as file:
+                    lines = file.readlines()
+
+                for obj in selected_objs:
+                    uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+                    if uuid_data and uuid_data["uuid_base_tile_name"]:
+                        # Helyes hozzárendelés, az "=" operátorral:
+                        uuid_transfermode = uuid_data["uuid_transfermode"]
+                        if uuid_transfermode == "LINK":
+                            base_tile_name = uuid_data["uuid_base_tile_name"]
+                            source_blendfile = uuid_data["uuid_source_blendfile"]
+                            for line in lines:
+                                try:
                                     name, blendfile, zoom = line.strip().split(" | ")
                                     if name == base_tile_name and zoom == self.zoom_level and blendfile == source_blendfile:
                                         selected_base_exits.add(obj["project_uuid"])
                                         self.report({'WARNING'}, f"Source file for {obj.name} is invalid or missing.")
                                         continue
-                                selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
-                                obj.hide_set(True)
-                            else:
-                                selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
-                                obj.hide_set(True)
-                            
-                    if self.replace_mode == 'REPLACE':
-                        self.replace_existing_objects(selected_base_tile_names, selected_base_exits)
-                    
-                    linked_objects = []
-                    
-                    for obj in selected_base_tile_names:
-                        obj = bpy.data.objects.get(obj)
-                        if obj:
-                            uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                            if not uuid_data["uuid_base_tile_name"]:
+                                except ValueError:
+                                    continue
+                            selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
+                            if self.collection_name == "TEMP_BAKE":
                                 continue
-                            
-                            source_file = self.get_source_file_for_object(obj)
-                            if not source_file or not os.path.exists(source_file):
-                                self.report({'WARNING'}, f"Source file for {obj.name} is invalid or missing.")
-                                continue
-                            
-                            one_uuid_set = {uuid_data["uuid_base_tile_name"]}
-                            newly_linked = self.transfer_objects(source_file, one_uuid_set)
-                            if newly_linked:
-                                linked_objects.extend(newly_linked)
-
-                    if not linked_objects:
-                        self.report({'ERROR'}, "No objects were transferred.")
-                        return {'CANCELLED'}
-                        
-                except ValueError:
-                    return {'CANCELLED'}
-            else:
-                source_file = self.get_source_file(context)
-                if not source_file or not os.path.exists(source_file):
-                    self.report({'ERROR'}, "Blend file path is invalid or missing.")
-                    return {'CANCELLED'}
-
-                if self.objects == 'ALL':
-                    selected_project_uuids = {"ALL"}
-                elif self.objects == 'OBJECTNAME':
-                    obj = bpy.data.objects.get(self.object_name)
-                    if obj and "project_uuid" in obj:
-                        uuid_data = UUIDManager.parse_project_uuid(obj.get("project_uuid", ""))
-                        if uuid_data and uuid_data["uuid_base_tile_name"]:
-                            selected_project_uuids = {uuid_data["uuid_base_tile_name"]}
+                            obj.hide_set(True)
                         else:
-                            self.report({'ERROR'}, f"Object '{self.object_name}' does not have a valid project_uuid.")
-                            return {'CANCELLED'}
-                    else:
-                        self.report({'ERROR'}, f"Object '{self.object_name}' not found.")
-                        return {'CANCELLED'}
-                else:
-                    self.report({'ERROR'}, "Invalid objects mode selected.")
-                    return {'CANCELLED'}
+                            selected_base_tile_names.add(uuid_data["uuid_base_tile_name"])
+                            if self.collection_name == "TEMP_BAKE":
+                                continue
+                            obj.hide_set(True)
 
                 if self.replace_mode == 'REPLACE':
-                    self.replace_existing_objects(selected_project_uuids)
+                    self.replace_existing_objects(selected_base_tile_names, selected_base_exits)
 
-                linked_objects = self.transfer_objects(source_file, selected_project_uuids)
-            
+                linked_objects = []
+                for tile_name in selected_base_tile_names:
+                    obj_ref = bpy.data.objects.get(tile_name)
+                    if obj_ref:
+                        uuid_data = UUIDManager.parse_project_uuid(obj_ref["project_uuid"])
+                        if not uuid_data["uuid_base_tile_name"]:
+                            continue
+                        source_file = self.get_source_file_for_object(obj_ref)
+                        if not source_file or not os.path.exists(source_file):
+                            self.report({'WARNING'}, f"Source file for {obj_ref.name} is invalid or missing.")
+                            continue
+                        newly_linked = self.transfer_objects(source_file, {uuid_data["uuid_base_tile_name"]})
+                        if newly_linked:
+                            linked_objects.extend(newly_linked)
+
+                if not linked_objects:
+                    self.report({'ERROR'}, "No objects were transferred.")
+                    return {'CANCELLED'}
+
+            except Exception as e:
+                self.report({'ERROR'}, f"Error during selected objects processing: {e}")
+                return {'CANCELLED'}
+
+        else:
+            source_file = self.get_source_file(context)
+            if not source_file or not os.path.exists(source_file):
+                self.report({'ERROR'}, "Blend file path is invalid or missing.")
+                return {'CANCELLED'}
+
+            if self.objects == 'ALL':
+                selected_project_uuids = {"ALL"}
+            elif self.objects == 'OBJECTNAME':
+                obj = bpy.data.objects.get(self.object_name)
+                if obj and "project_uuid" in obj:
+                    uuid_data = UUIDManager.parse_project_uuid(obj.get("project_uuid", ""))
+                    if uuid_data and uuid_data["uuid_base_tile_name"]:
+                        selected_project_uuids = {uuid_data["uuid_base_tile_name"]}
+                    else:
+                        self.report({'ERROR'}, f"Object '{self.object_name}' does not have a valid project_uuid.")
+                        return {'CANCELLED'}
+                else:
+                    self.report({'ERROR'}, f"Object '{self.object_name}' not found.")
+                    return {'CANCELLED'}
+            else:
+                self.report({'ERROR'}, "Invalid objects mode selected.")
+                return {'CANCELLED'}
+
+            if self.replace_mode == 'REPLACE':
+                self.replace_existing_objects(selected_project_uuids)
+            linked_objects = self.transfer_objects(source_file, selected_project_uuids)
+
             if not linked_objects:
                 self.report({'ERROR'}, "No objects were transferred.")
                 return {'CANCELLED'}
 
-            self.report({'INFO'}, f"Successfully transferred {len(linked_objects)} objects.")
-            return {'FINISHED'}
-        
-        self.report({'INFO'}, "Transfer process completed.")
+        self.report({'INFO'}, f"Successfully transferred {len(linked_objects)} objects.")
         return {'FINISHED'}
 
     def get_source_file_for_object(self, obj):
@@ -534,12 +562,10 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         if self.source_mode == 'MASTERFILE':
             master_txt_filepath = bpy.context.scene.master_txt_filepath
             if not os.path.exists(master_txt_filepath):
-                print(f"Master TXT file not found: {master_txt_filepath}")
+                self.report({'ERROR'}, f"Master TXT file not found: {master_txt_filepath}")
                 return None
-
             with open(master_txt_filepath, 'r') as file:
                 lines = file.readlines()
-
             for line in lines:
                 try:
                     name, blendfile, zoom = line.strip().split(" | ")
@@ -548,10 +574,8 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                 except ValueError:
                     continue
             return None
-
         elif self.source_mode == 'BLENDFILE':
             return os.path.join(master_folder, self.file_name)
-        
         return None
 
     def get_source_file(self, context):
@@ -561,31 +585,26 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         elif self.source_mode == 'BLENDFILE':
             return os.path.join(master_folder, self.file_name)
         return None
-    
+
     def get_master_file(self, context):
         master_txt_filepath = bpy.context.scene.master_txt_filepath
         if not os.path.exists(master_txt_filepath):
-            print(f"Master TXT file not found: {master_txt_filepath}")
+            self.report({'ERROR'}, f"Master TXT file not found: {master_txt_filepath}")
             return None
-
         with open(master_txt_filepath, 'r') as file:
             lines = file.readlines()
-
         for line in lines:
             try:
                 name, blendfile, zoom = line.strip().split(" | ")
-                if name == obj.name[:12] and zoom == zoom_level:
-                    return os.path.join(os.path.dirname(bpy.context.scene.master_txt_filepath), blendfile)
+                if zoom == self.zoom_level:
+                    return os.path.join(os.path.dirname(master_txt_filepath), blendfile)
             except ValueError:
-                continue 
+                continue
         return None
 
     def process_utils(self, context, source_file):
-        linked_utils = []
-        
-        node_group = bpy.data.node_groups.get(self.node_group)
+        # Átmeneti megoldás node_group vagy world átvitelére
         if self.node_group:
-            node_group = bpy.data.node_groups.get(self.node_group)
             try:
                 with bpy.data.libraries.load(source_file, link=(self.transfer_mode == 'LINK')) as (data_from, data_to):
                     if self.node_group in data_from.node_groups:
@@ -597,90 +616,62 @@ class XTD_OT_TransferModels(XTDToolsOperator):
             except Exception as e:
                 self.report({'ERROR'}, f"Error transferring node group: {e}")
                 return {'CANCELLED'}
-        
-        worlds = bpy.data.worlds.get(self.world)
         if self.world:
             try:
-                bpy.data.worlds.remove(self.world)
+                if self.world in bpy.data.worlds:
+                    bpy.data.worlds.remove(bpy.data.worlds[self.world])
             except Exception as e:
-                print(f"Error transfering node group: {e}") 
+                print(f"Error removing world: {e}")
             try:
-                world = self.world
                 with bpy.data.libraries.load(source_file, link=(self.transfer_mode == 'LINK')) as (data_from, data_to):
                     if hasattr(data_from, "worlds"):
                         data_to.worlds = [world_name for world_name in data_from.worlds if world_name in bpy.data.worlds]
                 if not data_to.worlds:
                     print("No world found to transfer.")
                     return None
-        
-                return None
+                return {'FINISHED'}
             except Exception as e:
-                print(f"Error transfering world: {e}")
-            return {'FINISHED'}
-            
-        return linked_utils
-
-
-    def get_util_names(self, context):
-        node_group = bpy.data.node_groups.get(self.node_group)
-        if self.node_group:
-            return [node_group.name for node_group in bpy.data.node_groups]
-        worlds = bpy.data.worlds.get(self.world)
-        if self.world:
-            return [world.name for world in bpy.data.worlds]
-        return []
-
+                print(f"Error transferring world: {e}")
+                return {'CANCELLED'}
+        return None
 
     def collectionchecker(self):
         if self.base_collection == "SCENE":
             return bpy.context.scene.collection
-            
         if self.base_collection == "COLLECTIONNAME":
-            if self.collection_name == "":
-                collection_destination = f"Collection"
-            else:
-                collection_destination = f"{self.collection_name}"
+            collection_destination = self.collection_name if self.collection_name else "Collection"
         else:
-            collection_destination = f"{self.base_collection}"
-        
+            collection_destination = self.base_collection
         temp_collection = bpy.data.collections.get(collection_destination)
         if not temp_collection:
             temp_collection = bpy.data.collections.new(collection_destination)
             temp_collection.color_tag = "COLOR_01"
             bpy.context.scene.collection.children.link(temp_collection)
+        if temp_collection:
+            bpy.context.scene.linked_target_collection = temp_collection
         return temp_collection
 
-
-
-    def replace_existing_objects(self, selected_base_tile_names, selected_base_exits):
+    def replace_existing_objects(self, selected_base_tile_names, selected_base_exits=None):
         temp_collection = self.collectionchecker()
-        
         if not temp_collection or not temp_collection.objects:
             return {'FINISHED'}
-        
         objects_to_replace = []
-        
-        if temp_collection and temp_collection.objects:
-            for obj in temp_collection.objects:
-                if "project_uuid" in obj:
-                    if obj["project_uuid"] in selected_base_exits:
-                        self.report({'INFO'}, f"{obj.name} in scene this zoom level.")
-                        continue
-                    uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
-                    if uuid_data and uuid_data["uuid_base_tile_name"] in selected_base_tile_names:
-                        objects_to_replace.append((obj, uuid_data))
-                        
-
+        for obj in temp_collection.objects:
+            if "project_uuid" in obj:
+                if selected_base_exits and obj["project_uuid"] in selected_base_exits:
+                    self.report({'INFO'}, f"{obj.name} exists in scene for this zoom level.")
+                    continue
+                uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
+                if uuid_data and uuid_data["uuid_base_tile_name"] in selected_base_tile_names:
+                    objects_to_replace.append((obj, uuid_data))
         for obj, uuid_data in objects_to_replace:
             if uuid_data["uuid_transfermode"] == "APPEND":
                 bpy.data.objects.remove(obj, do_unlink=True)
             elif uuid_data["uuid_transfermode"] == "LINK":
                 temp_collection.objects.unlink(obj)
                 bpy.data.objects.remove(obj, do_unlink=True)
-
-        
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
         return {'FINISHED'}
-
 
     def transfer_objects(self, source_file, selected_project_uuids):
         linked_objects = []
@@ -693,34 +684,32 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                         obj_name for obj_name in data_from.objects
                         if any(obj_name[:12] == uuid_base for uuid_base in selected_project_uuids)
                     ]
-        
             if not hasattr(data_to, "objects") or not data_to.objects:
                 print("No objects found to transfer.")
                 return None
-        
             temp_collection = self.collectionchecker()
             project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
-        
             for obj in data_to.objects:
                 if obj and isinstance(obj, bpy.types.Object):
                     temp_collection.objects.link(obj)
                     linked_objects.append(obj)
-        
                     unique_id = obj.get("unique_id", "NO_ID")
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|{self.transfer_mode}|{UUIDManager.generate_random_hash()}"
-        
-                    if obj.override_library is None and obj.library is not None:
-                        obj.override_library_create(hierarchy=True)
-                    obj.select_set(False)
-        
+                    # Csak akkor hozzuk létre az override‑ot, ha az objektum library-re hivatkozik
+                    # és rendelkezik az override_library_create metódussal.
+                    if obj.library is not None and hasattr(obj, "override_library_create"):
+                        if obj.override_library is None:
+                            obj.override_library_create(hierarchy=True)
         except Exception as e:
-            return {'CANCELLED'}
-        
+            print(f"Error during transfer: {e}")
+            return linked_objects
         return linked_objects
 
 
-# ================== RELOAD ADDON ==================
+# =============================================
+# RELOAD ADDON
+# =============================================
 class XTD_Reload_App(XTDToolsOperator):
     bl_idname = "xtd_tools.reloadapp"
     bl_label = "Reload Application"
@@ -731,22 +720,27 @@ class XTD_Reload_App(XTDToolsOperator):
         bpy.ops.script.reload()
         return {'FINISHED'}
 
-
-# ================== DYNAMIC POPUP ENGINE ==================
+# =============================================
+# DYNAMIC POPUP ENGINE
+# =============================================
 def PopupController(title="Information", message="Message", icon='INFO', buttons=None):
     def draw(self, context):
         self.layout.label(text=message, icon=icon)
-        
         if buttons:
             for btn_text, operator_name, btn_icon in buttons:
                 if operator_name:
                     self.layout.operator(operator_name, text=btn_text, icon=btn_icon if btn_icon else "NONE")
-
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
-
-# ================== DEFAULT GLOBAL PROPERTIES ==================
-bpy.types.Scene.master_txt_filepath=  bpy.props.StringProperty(name="Master TXT Filepath",description="Path to the master TXT file",subtype='FILE_PATH',default=r"C:\Movie\BP\LINKEDPARTS\MASTER.txt")
+# =============================================
+# DEFAULT GLOBAL PROPERTIES
+# =============================================
+bpy.types.Scene.master_txt_filepath = bpy.props.StringProperty(
+    name="Master TXT Filepath",
+    description="Path to the master TXT file",
+    subtype='FILE_PATH',
+    default=r"C:\Movie\BP\LINKEDPARTS\MASTER.txt"
+)
 bpy.types.Scene.xtd_tools_activepanels = bpy.props.BoolProperty(name="ACTIVE PANELS", default=False)
 bpy.types.Scene.batch_mode = bpy.props.EnumProperty(
     name="BATCH SIZE",
@@ -768,26 +762,29 @@ bpy.types.Scene.batch_mode = bpy.props.EnumProperty(
     ],
     default='1'
 )
-bpy.types.Scene.export_ply = bpy.props.EnumProperty(name='EXPORT AS PLY?',
-        description='Export as PLY?',
-        items =  (
-            ('YES','YES',''),
-            ('NO','NO','')
-        ),
-        default = 'NO'
-    )
-bpy.types.Scene.shutdown_after = bpy.props.EnumProperty(name='SHUTDOWN CPU?',
-        description='Final shutdown cpu?',
-        items =  (
-            ('YES','YES',''),
-            ('NO','NO','')
-        ),
-        default = 'NO'
-    )
-bpy.types.Scene.xtd_active_panels = bpy.props.CollectionProperty(type=bpy.types.PropertyGroup,name="Active Panels")
+bpy.types.Scene.export_ply = bpy.props.EnumProperty(
+    name='EXPORT AS PLY?',
+    description='Export as PLY?',
+    items=(
+        ('YES', 'YES', ''),
+        ('NO', 'NO', '')
+    ),
+    default='NO'
+)
+bpy.types.Scene.shutdown_after = bpy.props.EnumProperty(
+    name='SHUTDOWN CPU?',
+    description='Final shutdown cpu?',
+    items=(
+        ('YES', 'YES', ''),
+        ('NO', 'NO', '')
+    ),
+    default='NO'
+)
+bpy.types.Scene.xtd_active_panels = bpy.props.CollectionProperty(type=bpy.types.PropertyGroup, name="Active Panels")
 
-
-# ================== TIME AND STATUS ==================
+# =============================================
+# TIME AND STATUS
+# =============================================
 class Timer:
     def __init__(self):
         self.start_time = time.time()
@@ -805,26 +802,25 @@ def colors():
     darkgrey = ColorHex('#212121')
     grey = ColorHex('#efefef')
     yellow = ColorHex('#fcc219')
-    
     wq = 106
     ws = " "
     wl = "_"
     return darkgrey, grey, yellow, wq, ws, wl
-    
+
 def make_update_callback(panel):
     def update(self, context):
         if bpy.context.scene.tool_visibility_mode == 'DEFAULT':
-            global_settings.VisibilityController.update_visibility(panel)
+            VisibilityController.update_visibility(panel)
         return None
     return update
 
 def statusheader(bl_label, functiontext):
     os.system("cls")
     darkgrey, grey, yellow, wq, ws, wl = colors()
-    bl_c=len(bl_label)
-    ft_c=len(functiontext)
-    bl_q =int(wq - bl_c)
-    ft_q =int(wq - ft_c)
+    bl_c = len(bl_label)
+    ft_c = len(functiontext)
+    bl_q = int(wq - bl_c)
+    ft_q = int(wq - ft_c)
     bg_hex(f"{darkgrey}  {wq * ws}{darkgrey.OFF}", "#161616")
     bg_hex(f"{darkgrey}  {grey}{bl_label}{bl_q * ws}{grey.OFF}{darkgrey.OFF}", "#161616")
     bg_hex(f"{darkgrey}__{wq * wl}{darkgrey.OFF}", "#161616")
@@ -836,13 +832,20 @@ def print_status(batch_index, total_batches, total_objects, current_index):
     darkgrey, grey, yellow, wq, ws, wl = colors()
     bg_hex(f"{darkgrey}  {grey}BATCH READY: {batch_index} | TOTAL: {total_batches} | OBJECT READY: {current_index} | ALL OBJECTS: {total_objects}{grey.OFF} {darkgrey.OFF}", "#161616")
 
-
-# ================== BASE FUNCTIONS ==================
+# =============================================
+# BASE FUNCTIONS
+# =============================================
 def bake_render_settings():
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    extrusion = float(scene.xtd_custom_bake_extrusion)
-    raydistance = float(scene.xtd_custom_bake_raydistance)
+    try:
+        extrusion = float(scene.xtd_custom_bake_extrusion)
+    except:
+        extrusion = 0.5
+    try:
+        raydistance = float(scene.xtd_custom_bake_raydistance)
+    except:
+        raydistance = 100
     scene.cycles.feature_set = 'EXPERIMENTAL'
     scene.cycles.device = 'GPU'
     scene.cycles.use_denoising = False
@@ -912,7 +915,7 @@ def check_master_file_availability(self, context):
     for line in lines:
         try:
             name, blendfile, zoom = line.strip().split(" | ")
-            if self.resolution:
+            if hasattr(self, 'resolution') and self.resolution:
                 if zoom == self.resolution:
                     tile_names.append(name)
             else:
@@ -921,19 +924,14 @@ def check_master_file_availability(self, context):
             continue
             
     return tile_names
-    
+
 def selected_objects(self, context):
     selected_objects = bpy.context.selected_objects
     if not selected_objects:
         self.report({'WARNING'}, "No objects selected.")
         return {'CANCELLED'}
-
-    selected_objects = [obj for obj in selected_objects]
-    
     return selected_objects
 
-
-# ================== Export ply ==================
 def export_ply_object(obj, export_dir):
     filepath = os.path.join(export_dir, f"{obj.name}.ply")
     bpy.ops.wm.ply_export(
@@ -946,37 +944,25 @@ def export_ply_object(obj, export_dir):
     )
     bpy.data.objects.remove(obj, do_unlink=True)
 
-
-# ================== BATCH PROCESSOR ==================
 def process_batch(context, objects):
     prefs = bpy.context.scene.xtd_tools_props
     export_dir = os.path.dirname(bpy.data.filepath)
-
-    batch_size = prefs.batch_size if prefs.batch_mode != "DISABLED" else 1
-
+    batch_size = int(prefs.batch_mode) if prefs.batch_mode != "DISABLED" else 1
     start_time = time.time()
     total_objects = len(objects)
-
     for i, obj in enumerate(objects):
         if i % batch_size == 0 and prefs.show_status:
             elapsed = time.time() - start_time
             print(f"Processed {i}/{total_objects} objects. Elapsed time: {elapsed:.2f}s")
-
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
-
         print(f"Processing {obj.name} ({i + 1}/{total_objects})")
-
         if prefs.export_ply:
             export_ply_object(obj, export_dir)
-
         obj.select_set(False)
-
     if prefs.shutdown_after:
         threading.Thread(target=shutdown_computer).start()
-        
 
-# ================== Shutdown pc ==================
 def shutdown_computer():
     os_name = os.name
     if os_name == "nt":
@@ -986,7 +972,5 @@ def shutdown_computer():
     else:
         print("Az operációs rendszer nem támogatott.")
 
-# ================== HOTKEY SETUP ==================
 def setup_hotkeys():
     keyboard.add_hotkey("esc", ProcessManager.stop)
-

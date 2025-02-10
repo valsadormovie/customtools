@@ -23,7 +23,6 @@ def import_and_register_modules():
     global_settings = importlib.import_module(".global_settings", package=__name__)
     importlib.reload(global_settings)
 
-    # Létrehozunk Scene property-ket a panel láthatóságának kezelésére
     for panel in panels:
         proper_name = f"show_{panel}"
         print(proper_name)
