@@ -925,6 +925,11 @@ def check_master_file_availability(self, context):
             
     return tile_names
 
+def check_selected_active_button(layout_type):
+    import bpy
+    if len(bpy.context.selected_objects) < 1:
+        layout_type.enabled = False
+        
 def selected_objects(self, context):
     selected_objects = bpy.context.selected_objects
     if not selected_objects:

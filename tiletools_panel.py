@@ -23,7 +23,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
+        scene = context.scene  # Használjuk a context-et!
         tile_name = None
         
         if context.active_object is not None:
