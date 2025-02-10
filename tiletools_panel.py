@@ -23,31 +23,31 @@ class XTD_PT_TileTools(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scene = bpy.context.scene
-        tile_name = None 
+        scene = context.scene
+        tile_name = None
         
-        if bpy.context.active_object is not None:
-            tile_name = bpy.context.active_object.name
+        if context.active_object is not None:
+            tile_name = context.active_object.name
 
-        
         row = layout.row(align=True)
         row.alignment = 'LEFT'
         box = layout.box()
         row = box.row(align=True)
-        if bpy.context.active_object:
-            tile_name = bpy.context.active_object.name
+        if context.active_object:
+            tile_name = context.active_object.name
             row.label(text=f"Selected Object: {tile_name}", icon="OBJECT_DATA")
         else:
             row.label(text="No object selected!", icon="ERROR")
             return
-            
-        row.prop(bpy.context.scene, "xtd_tools_selectedobjectdata", text="OBJECT UUID DATA", emboss=False, icon_only=True, icon="TRIA_DOWN" if bpy.context.scene.xtd_tools_unvisiblemodif else "TRIA_RIGHT")
-        if bpy.context.scene.xtd_tools_selectedobjectdata:
+
+        row.prop(scene, "xtd_tools_selectedobjectdata", text="OBJECT UUID DATA", emboss=False, icon_only=True, icon="TRIA_DOWN" if scene.get("xtd_tools_unvisiblemodif", False) else "TRIA_RIGHT")
+
+        if scene.xtd_tools_selectedobjectdata:
             box = layout.box()
             row = box.row(align=True)
-            if "project_uuid" in bpy.context.active_object:
+            if "project_uuid" in context.active_object:
                 grid = row.grid_flow(columns=1, align=True)
-                uuid_data = UUIDManager.parse_project_uuid(bpy.context.active_object["project_uuid"])
+                uuid_data = UUIDManager.parse_project_uuid(context.active_object["project_uuid"])
                 base_tile_name = uuid_data["uuid_base_tile_name"]
                 base_tile_transfermode = uuid_data["uuid_transfermode"]
                 base_tile_source = uuid_data["uuid_source_blendfile"]
@@ -56,11 +56,9 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 grid.label(text=f"SOURCE: {base_tile_source}", icon="DECORATE_LIBRARY_OVERRIDE")
             else:
                 row.label(text="Project UUID not found!", icon="ERROR")
-        
-        layout = self.layout
+
         row = layout.row()
         row.label(text="TILE TRANSFER MODE:", icon="AREA_JOIN")
-        layout = self.layout
         box = layout.box()
         row = box.row(align=True)
         row.prop(scene, "xtd_tools_tiletools_mode", text="")
@@ -82,25 +80,20 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 "label": "OPTIMIZE ZOOM LEVEL:",
                 "icon": "TRANSFORM_ORIGINS",
             },
-            
             "Bake": {
                 "label": "BAKE TEXTURE WITH ZOOM LEVEL:",
                 "icon": "NODE_TEXTURE",
                 "extra_text": "Choose a zoom level to be baked",
             },
-            
             "ShowAvailable": {
-                "label": "SHOW VISUALY ZOOM LEVEL:",
+                "label": "SHOW VISUALLY ZOOM LEVEL:",
                 "icon": "TRANSFORM_ORIGINS",
                 "extra_buttons": [("Remove Shows", "xtd_tools.remove_shows", "CANCEL")],
             },
-            
         }
-        
-        layout = self.layout
 
         mode_settings = mode_ui_elements.get(scene.xtd_tools_tiletools_mode, {})
-        
+
         if "extra_props" in mode_settings:
             for prop_name, label in mode_settings["extra_props"]:
                 if prop_name == "xtd_tools_transferreplacemode":
@@ -108,11 +101,10 @@ class XTD_PT_TileTools(bpy.types.Panel):
                     row.alignment = 'EXPAND'
                     row.use_property_decorate = False
                     row.prop(scene, prop_name, text=label, icon="MOD_DATA_TRANSFER")
-        layout = self.layout
+
         row = box.row(align=True)
+        row.alignment = 'LEFT'
         if "label" in mode_settings:
-            row = box.row(align=True)
-            row.alignment = 'LEFT'
             if "extra_text" in mode_settings:
                 row.scale_y = 0.5
                 row.label(text=mode_settings["label"], icon=mode_settings["icon"])
@@ -122,10 +114,9 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row.label(text=mode_settings["extra_text"])
             else:
                 row.label(text=mode_settings["label"], icon=mode_settings["icon"])
-        
+
         if scene.xtd_tools_tiletools_mode == "Bake":
-            layout = self.layout
-            
+            row = layout.row()
             row.separator()
             row = layout.row()
             row.prop(scene, "xtd_tools_bake_texture_mode", expand=True)
@@ -137,22 +128,17 @@ class XTD_PT_TileTools(bpy.types.Panel):
             row.prop(scene, "xtd_tools_bake_texture_resolution", text="MODE")
             row.alignment = 'LEFT'
             if scene.xtd_tools_bake_texture_mode == "EXTENDED":
-                layout = self.layout
                 row = layout.row()
                 row.label(text="BAKE SETTINGS:")
-                layout = self.layout
                 box = layout.box()
                 row = box.row(align=True)
                 grid = box.grid_flow(columns=2, align=True)
-                grid.prop(bpy.context.scene, "xtd_custom_bake_extrusion")
-                grid.prop(bpy.context.scene, "xtd_custom_bake_raydistance")
+                grid.prop(scene, "xtd_custom_bake_extrusion")
+                grid.prop(scene, "xtd_custom_bake_raydistance")
                 
-                layout = self.layout
                 row = layout.row()
                 row.label(text="CREATE NEW:")
-                layout = self.layout
                 box = layout.box()
-                
                 row = box.row(align=True)
                 row.alignment = 'EXPAND'
                 row.use_property_split = True
@@ -174,20 +160,15 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row.label(text="", icon='MATERIAL')
                 row.prop(scene, "xtd_tools_bake_newmaterial", expand=True)
                 
-                
-                layout = self.layout
                 row = layout.row()
                 row.label(text="SOURCE TILE RESOLUTION:")
-            if scene.xtd_tools_bake_texture_mode == "SIMPLE":
-                layout = self.layout
+            elif scene.xtd_tools_bake_texture_mode == "SIMPLE":
                 row = layout.row()
                 row.label(text="SOURCE TILE RESOLUTION:")
-        
+
         if scene.xtd_tools_tiletools_mode == "Helper":
-            layout = self.layout
             layout.separator()
-            layout.label(text=f"TILE HELPER UTILITIES:", icon="MODIFIER_DATA")
-            
+            layout.label(text="TILE HELPER UTILITIES:", icon="MODIFIER_DATA")
             self.draw_accordion_box(context, layout, "ADD TILE HELPER OBJECT", "xtd_tools_tile_helper", 3, [
                 ("Cage", "append_cage", False),
                 ("Empty", "append_empty", False),
@@ -223,14 +204,10 @@ class XTD_PT_TileTools(bpy.types.Panel):
             self.draw_accordion_box(context, layout, "UUID", "xtd_tools_uuid", 1, [
                 ("Create unique IDs", "adduuid", False),
             ])
-            
         else:
-            layout = self.layout
-            row = layout.row()
             box = layout.box()
             row = box.row(align=True)
             grid = row.grid_flow(columns=4, align=True)
-
             zoom_levels = ["BP18", "BP19", "BP20", "BP21"]
             operator_map = {
                 "ShowAvailable": "xtd_tools.showavailable_tile_resolution",
@@ -240,7 +217,6 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 "Link": "xtd_tools.link_tile_resolution"
             }
             operator_id = operator_map.get(scene.xtd_tools_tiletools_mode, "xtd_tools.showavailable_tile_resolution")
-
             for zoom_level in zoom_levels:
                 exists, blendfile = self.check_resolution_availability(tile_name, zoom_level)
                 sub_row = grid.row(align=True)
@@ -251,86 +227,69 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 op.resolution = zoom_level
                 if scene.xtd_tools_tiletools_mode != "Optimize":
                     op.blend_file = blendfile
-                    
-            layout = self.layout
-            row = layout.row()
-            row = box.row(align=True)
-            layout.label(text="UNLINK TARGET COLLETION:")
+
             box = layout.box()
             row = box.row(align=True)
+            row.prop(scene, "xtd_tools_tileunlinkpanels", text="UNLINK TILES", emboss=False, icon_only=True, 
+                     icon="TRIA_DOWN" if scene.xtd_tools_tileunlinkpanels else "TRIA_RIGHT")
+            if scene.xtd_tools_tileunlinkpanels:
+                row = box.row(align=True)
+                row.label(text="UNLINK TARGET COLLECTION:")
+                row = box.row(align=True)
+                row.prop(scene, "linked_target_collection", text="")
+                row = box.row(align=True)
+                row.prop(scene, "tile_unlinking_mode", expand=True)
+                row.separator()
+                row = box.row(align=True)
+                row.operator("xtd_tools.unlink_all_tiles", text="UNLINK ALL")
 
-            row.prop(scene, "linked_target_collection", text="")
-            row = box.row(align=True)
-            row.prop(scene, "tile_unlinking_mode", expand=True)
-            row.separator()
-            row = box.row(align=True)
-            row.operator(f"xtd_tools.unlink_all_tiles", text="UNLINK ALL")
-            
             if "extra_props" in mode_settings:
                 for prop_name, label in mode_settings["extra_props"]:
                     if prop_name != "xtd_tools_transferreplacemode":
-                        row.alignment = 'LEFT' 
                         row = box.row(align=True)
                         row.scale_x = 0.5
                         row.label(text="TEXTURE RESOLUTION")
                         row.scale_x = 0.5
                         row.use_property_decorate = False
                         row.prop(scene, prop_name, text="")
-                        
 
             if "extra_buttons" in mode_settings:
                 row = box.row(align=True)
                 for btn_label, op_id, icon in mode_settings["extra_buttons"]:
                     row.operator(op_id, text=btn_label, icon=icon)
 
-
     def draw_accordion_box(self, context, layout, label, prop_name, column_span, buttons, require_selected=False):
-        scene = bpy.context.scene
+        scene = context.scene
         row = layout.row()
         row.alignment = 'LEFT'
-        
-        row.prop(scene, prop_name, text=label, emboss=False, icon_only=True, icon="TRIA_DOWN" if getattr(scene, prop_name) else "TRIA_RIGHT")
-        if prop_name == "xtd_tools_tile_helper":
-            if getattr(scene, prop_name):
-                box = layout.box()
+        row.prop(scene, prop_name, text=label, emboss=False, icon_only=True,
+                 icon="TRIA_DOWN" if getattr(scene, prop_name) else "TRIA_RIGHT")
+        if getattr(scene, prop_name):
+            box = layout.box()
+            if prop_name == "xtd_tools_tile_helper":
                 row = box.row(align=True)
                 row.label(text="COLLECTION DESTINATION:")
                 row = box.row(align=True)
                 row.scale_x = 0.30
-                row.prop(bpy.context.scene, "xtd_custom_collection_name")
-                row = box.row(align=True)
-                grid = box.grid_flow(columns=int(column_span), align=True)
-                for button_text, operator, full_width in buttons:
-                    if require_selected:
-                        check_selected_active_button(grid)
-                    if full_width:
-                        grid.operator(f"xtd_tools.{operator}", text=button_text)
-                    else:
-                        grid.operator(f"xtd_tools.{operator}", text=button_text)
-        else:
-            if getattr(scene, prop_name):
-                box = layout.box()
-                grid = box.grid_flow(columns=int(column_span), align=True)
-                for button_text, operator, full_width in buttons:
-                    if require_selected:
-                        check_selected_active_button(grid)
-                    if full_width:
-                        grid.operator(f"xtd_tools.{operator}", text=button_text)
-                    else:
-                        grid.operator(f"xtd_tools.{operator}", text=button_text)
+                row.prop(scene, "xtd_custom_collection_name")
+            grid = box.grid_flow(columns=int(column_span), align=True)
+            for button_text, operator, full_width in buttons:
+                if require_selected:
+                    check_selected_active_button(grid)
+                if full_width:
+                    grid.operator(f"xtd_tools.{operator}", text=button_text)
+                else:
+                    grid.operator(f"xtd_tools.{operator}", text=button_text)
 
     def check_resolution_availability(self, tile_name, zoom_level):
         master_txt_filepath = bpy.context.scene.master_txt_filepath
         if not os.path.exists(master_txt_filepath):
             return (False, "")
-        
         with open(master_txt_filepath, 'r') as file:
             lines = file.readlines()
-
         for line in lines:
             try:
                 name, blendfile, zoom = line.strip().split(" | ")
-
                 if name[:12] == tile_name[:12] and zoom == zoom_level:
                     full_path = os.path.join(os.path.dirname(master_txt_filepath), blendfile)
                     if os.path.exists(full_path):
@@ -344,6 +303,7 @@ class XTD_PT_TileTools(bpy.types.Panel):
 # ================ SCENES ================
 bpy.types.Scene.xtd_tools_tile_helper = bpy.props.BoolProperty(name="Tile Helper", default=False)
 bpy.types.Scene.xtd_tools_selectedobjectdata = bpy.props.BoolProperty(name="OBJECT DATA", default=False)
+bpy.types.Scene.xtd_tools_tileunlinkpanels = bpy.props.BoolProperty(name="Unlink tiles", default=False)
 bpy.types.Scene.xtd_custom_bake_extrusion = bpy.props.StringProperty(name="EXTR", description="", default="0.5")
 bpy.types.Scene.xtd_custom_bake_raydistance = bpy.props.StringProperty(name="DIST", description="", default="100")
 bpy.types.Scene.xtd_custom_collection_name = bpy.props.StringProperty(name="NAME", description="Custom destination", default="")
@@ -528,30 +488,29 @@ class XTD_OT_UnlinkTileResolutions(global_settings.XTDToolsOperator):
             uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
             if uuid_data and uuid_data["uuid_base_tile_name"]:
                 base_tile_name = {uuid_data["uuid_base_tile_name"]}
-                print(f'Selected: {base_tile_name}, MODE: {bpy.context.scene.tile_unlinking_mode}')
                 if bpy.context.scene.tile_unlinking_mode == "Selected":
                     if obj in bpy.context.selected_objects:
                         base_tile_name = {uuid_data["uuid_base_tile_name"]}
-                        print(f'Selected: {base_tile_name}, MODE: {bpy.context.scene.tile_unlinking_mode}')
                         unlinked_objs.append(obj["project_uuid"])
                         
                 else:
-                    print(f'Not selected: {base_tile_name}, MODE: {bpy.context.scene.tile_unlinking_mode}')
                     base_tile_name = {uuid_data["uuid_base_tile_name"]}
                     unlinked_objs.append(obj["project_uuid"])
         
         
         for obj in bpy.data.objects:
             if obj.type == 'MESH':
-                if obj["project_uuid"]:
+                if "project_uuid" in obj:
                     uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
                     if obj["project_uuid"] in unlinked_objs:
                         bpy.data.objects.remove(obj, do_unlink=True)
                     else:
                         if uuid_data and uuid_data["uuid_base_tile_name"]:
                             bpy.data.objects[obj.name].hide_set(False)
-        
-
+                            
+        if len(temp_collection.objects) < 1:
+            bpy.data.collections.remove(temp_collection)
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
         return {'FINISHED'}
 
 bpy.types.Scene.linked_target_collection = bpy.props.PointerProperty(
@@ -581,6 +540,11 @@ class XTD_OT_AppendTileResolution(global_settings.XTDToolsOperator):
     def execute(self, context):
         global_settings.UUIDManager.ensure_project_uuid()
         global_settings.UUIDManager.deduplicate_project_uuids()
+        temp_collection = bpy.data.collections.get("TEMP_LINKED")
+        if not temp_collection:
+            temp_collection = bpy.data.collections.new("TEMP_LINKED")
+            temp_collection.color_tag = "COLOR_01"
+            bpy.context.scene.collection.children.link(temp_collection)
         transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
         if transferreplacemode:
             selected_replace_mode = "REPLACE"
@@ -599,6 +563,11 @@ class XTD_OT_LinkTileResolution(global_settings.XTDToolsOperator):
     def execute(self, context):
         global_settings.UUIDManager.ensure_project_uuid()
         global_settings.UUIDManager.deduplicate_project_uuids()
+        temp_collection = bpy.data.collections.get("TEMP_LINKED")
+        if not temp_collection:
+            temp_collection = bpy.data.collections.new("TEMP_LINKED")
+            temp_collection.color_tag = "COLOR_01"
+            bpy.context.scene.collection.children.link(temp_collection)
         transferreplacemode = bpy.context.scene.xtd_tools_transferreplacemode
         if transferreplacemode:
             selected_replace_mode = "REPLACE"
