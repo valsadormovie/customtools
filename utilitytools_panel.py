@@ -323,10 +323,11 @@ class XTD_OT_separate_quad_by_XY(global_settings.XTDToolsOperator):
         
         with alive_bar(len(selected_objs), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
             for obj in selected_objs:
+                obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
                 if not ProcessManager.is_running():
                     self.report({'INFO'}, "Process stopped by user.")
                     return {'CANCELLED'}
-                obj = bpy.context.active_object
 
                 bpy.ops.object.mode_set(mode='EDIT')
                 bm = bmesh.from_edit_mesh(obj.data)
