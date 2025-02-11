@@ -38,28 +38,35 @@ class XTD_PT_ScriptRunner(bpy.types.Panel):
         row.operator("xtd_tools.run_script", text="Run Script", icon="PLAY")
 
 # ================ PROPERTYS ================
+def update_text_list(self, context):
+    """Frissíti a Blender Text Editor-ban lévő szkriptek listáját."""
+    return [(text.name, text.name, "") for text in bpy.data.texts]
+
 bpy.types.Scene.script_runner_mode = bpy.props.EnumProperty(
-    name="Mode",
-    description="Choose the script execution mode",
+    name="Mód",
+    description="Válaszd ki, honnan futtassuk a szkriptet",
     items=[
-        ("LOCAL", "LOCAL", "Run from Blender Text Editor"),
-        ("FILE", "FILE", "Run from external Python file")
+        ("LOCAL", "Blender Text", "Szkript a Blender belső Text Editorából"),
+        ("FILE", "Külső fájl", "Szkript külső Python fájlból")
     ],
     default="LOCAL"
 )
 
-def update_script_list(self, context):
-    return [(text.name, text.name, "") for text in bpy.data.texts]
-
 bpy.types.Scene.script_runner_selected = bpy.props.EnumProperty(
     name="Script",
     description="Select a script from the project",
-    items=update_script_list
+    items=update_text_list
+)
+
+bpy.types.Scene.script_runner_text = bpy.props.EnumProperty(
+    name="Szkript",
+    description="Válaszd ki a futtatandó szkriptet",
+    items=update_text_list
 )
 
 bpy.types.Scene.script_runner_filepath = bpy.props.StringProperty(
-    name="Script File",
-    description="Select a Python script file",
+    name="Szkript Fájl",
+    description="Útvonal egy külső Python szkript fájlhoz",
     default="",
     subtype='FILE_PATH'
 )
@@ -74,37 +81,44 @@ class XTD_OT_RunScript(global_settings.XTDToolsOperator):
     def process_object(self, obj):
         scene = bpy.context.scene
 
+        # A futtatandó szkript betöltése a kiválasztott módtól függően
         if scene.script_runner_mode == "LOCAL":
-            script_name = scene.script_runner_selected
-            active_script = bpy.data.texts.get(script_name)
-            
-            if not active_script:
-                self.report({'WARNING'}, "Selected script not found.")
+            script_name = scene.script_runner_text
+            text = bpy.data.texts.get(script_name)
+            if not text:
+                self.report({'WARNING'}, "A kiválasztott szkript nem található!")
                 return {'CANCELLED'}
-
-            script = active_script.as_string()
-        
+            script_code = text.as_string()
         else:
-            script_path = bpy.path.abspath(scene.script_runner_filepath).strip()
-            if not script_path or not os.path.exists(script_path):
-                self.report({'WARNING'}, "Invalid script file path.")
+            # Külső fájl
+            filepath = bpy.path.abspath(scene.script_runner_filepath).strip()
+            if not filepath or not os.path.exists(filepath):
+                self.report({'WARNING'}, "Érvénytelen vagy nem létező fájlútvonal!")
+                return {'CANCELLED'}
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    script_code = f.read()
+            except Exception as e:
+                self.report({'ERROR'}, f"Hiba a fájl beolvasása közben: {e}")
                 return {'CANCELLED'}
 
-            with open(script_path, 'r') as file:
-                script = file.read()
+        # Módosítás: cseréljük le a bpy.context.object hivatkozást az 'obj'-re
+        script_code = re.sub(r'\bbpy\.context\.object\b', 'obj', script_code)
 
-        try:
-            script = re.sub(r'\bbpy\.context\.object\b', 'obj', script)
-
-            area = next((area for area in bpy.context.screen.areas if area.type == 'VIEW_3D'), None)
-            if area:
-                with bpy.context.temp_override(area=area):
-                    exec(script, {"obj": obj, "bpy": bpy})
-            else:
-                exec(script, {"obj": obj, "bpy": bpy})
-
-        except Exception as e:
-            self.report({'ERROR'}, f"Script error: {e}")
+        # Ellenőrzés: vannak-e kiválasztott objektumok?
+        selected_objects = bpy.context.selected_objects
+        if not selected_objects:
+            self.report({'WARNING'}, "Nincs kiválasztott objektum!")
             return {'CANCELLED'}
 
+        # A szkriptet minden kiválasztott objektumra lefuttatjuk
+        for obj in selected_objects:
+            try:
+                # A futtatás lokális környezete: csak "obj" (az aktuális objektum) és "bpy" érhető el
+                exec(script_code, {"obj": obj, "bpy": bpy})
+            except Exception as e:
+                self.report({'ERROR'}, f"Hiba a szkript futtatása közben ({obj.name}): {e}")
+                return {'CANCELLED'}
+
+        self.report({'INFO'}, "A szkript sikeresen lefutott minden kiválasztott objektumon.")
         return {'FINISHED'}

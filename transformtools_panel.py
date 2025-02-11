@@ -34,9 +34,11 @@ class XTD_PT_TransformTools(bpy.types.Panel):
        
         for i in range(0, 2, 2):
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.apply_transform_from_file", text="Apply File Transforms", icon="FILE_TICK")
             row.operator("xtd_tools.apply_both_transforms", text="Apply Main Transforms", icon="CON_TRANSFORM")
             row = box.row(align=True)
+            check_selected_active_button(row)
             row.operator("xtd_tools.save_transform_to_txt", text="Save to TXT", icon="EXPORT")
             row.operator("xtd_tools.generate_tile_txt", text="Generate Tile TXT", icon="TEXT")
 
@@ -138,53 +140,103 @@ class XTD_OT_ApplyBothTransforms(global_settings.XTDToolsOperator):
 
     def process_object(self, obj):
         context = bpy.context
-        main_transform_file = r'C:\Movie\BP\MAIN_TRANSFORM_CENTER.txt'
-        main_transform_data = read_transform_from_file(main_transform_file)
-        apply_transformations_to_selected_objects(context, main_transform_data)
-
-        rotate_transform_file = r'C:\Movie\BP\ROTATE.txt'
-        rotate_transform_data = read_transform_from_file(rotate_transform_file)
-        apply_transformations_to_selected_objects(context, rotate_transform_data)
-        
-def apply_transformations_to_selected_objects(context):
-    selected_objects = bpy.context.selected_objects
-    collection = bpy.data.collections.get("Collection")
-    bpy.context.preferences.edit.use_global_undo = False
-    for obj in selected_objects:
-        bpy.context.view_layer.objects.active = obj
-        obj.location = Vector(transform_data["location"])
-        obj.rotation_mode = 'QUATERNION'
-        obj.rotation_quaternion = Quaternion(transform_data["rotation_quaternion"])
-        obj.scale = Vector(transform_data["scale"])
-        obj.location = Vector(transform_data["location"])
-        obj.rotation_mode = 'QUATERNION'
-        obj.rotation_quaternion = Quaternion(transform_data["rotation_quaternion"])
-        obj.scale = Vector(transform_data["scale"])
-        newobj = obj.copy()
-        newobj.data = obj.data.copy()
-        
-        collection.objects.link(newobj)
-        newobj.select_set(False)
+        collection = bpy.data.collections.get("Collection")
+        bpy.ops.object.select_all(action = 'DESELECT')
+        obj = bpy.data.objects[obj.name]
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True, properties=True)
-        bpy.context.view_layer.update()
-        datatransfer = obj.modifiers.new(name="DataTransfer", type='DATA_TRANSFER')
-        bpy.context.object.modifiers["DataTransfer"].show_viewport = False
-        datatransfer.use_loop_data = True
-        datatransfer.data_types_loops = {'CUSTOM_NORMAL'}
-        datatransfer.loop_mapping = 'TOPOLOGY'
-        datatransfer.object = newobj
-        bpy.ops.object.modifier_apply(modifier="DataTransfer")
-        obj.select_set(False)
-        newobj.select_set(True)
-        bpy.context.view_layer.objects.active = newobj
-        bpy.ops.object.delete(use_global=True)
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
-    bpy.context.preferences.edit.use_global_undo = True
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        for ob in bpy.context.selected_objects:
+            main_transform_file = r'C:\Movie\BP\MAIN_TRANSFORM_CENTER.txt'
+            transform_data = {
+                "location": [0.0, 0.0, 0.0],
+                "rotation_quaternion": [1.0, 0.0, 0.0, 0.0],
+                "scale": [1.0, 1.0, 1.0],
+            }
+            if os.path.exists(main_transform_file):
+                with open(main_transform_file, 'r') as file:
+                    lines = file.readlines()
+                    for line in lines:
+                        if line.startswith('TX:'):
+                            transform_data["location"][0] = float(line.split(':')[1].strip())
+                        elif line.startswith('TY:'):
+                            transform_data["location"][1] = float(line.split(':')[1].strip())
+                        elif line.startswith('TZ:'):
+                            transform_data["location"][2] = float(line.split(':')[1].strip())
+                        elif line.startswith('RW:'):
+                            transform_data["rotation_quaternion"][0] = float(line.split(':')[1].strip())
+                        elif line.startswith('RX:'):
+                            transform_data["rotation_quaternion"][1] = float(line.split(':')[1].strip())
+                        elif line.startswith('RY:'):
+                            transform_data["rotation_quaternion"][2] = float(line.split(':')[1].strip())
+                        elif line.startswith('RZ:'):
+                            transform_data["rotation_quaternion"][3] = float(line.split(':')[1].strip())
+                        elif line.startswith('SX:'):
+                            transform_data["scale"][0] = float(line.split(':')[1].strip())
+                        elif line.startswith('SY:'):
+                            transform_data["scale"][1] = float(line.split(':')[1].strip())
+                        elif line.startswith('SZ:'):
+                            transform_data["scale"][2] = float(line.split(':')[1].strip())
+            
+            obj.location = Vector(transform_data["location"])
+            obj.rotation_mode = 'QUATERNION'
+            obj.rotation_quaternion = Quaternion(transform_data["rotation_quaternion"])
+            obj.scale = Vector(transform_data["scale"])
+            obj.location = Vector(transform_data["location"])
+            obj.rotation_mode = 'QUATERNION'
+            obj.rotation_quaternion = Quaternion(transform_data["rotation_quaternion"])
+            obj.scale = Vector(transform_data["scale"])
+            
+            bpy.ops.object.transform_apply(location=True, rotation=True, properties=True)
+            bpy.context.view_layer.update()
+        
 
+        for ob in bpy.context.selected_objects:
+            main_transform_file = r'C:\Movie\BP\ROTATE.txt'
+            transform_data = {
+                "location": [0.0, 0.0, 0.0],
+                "rotation_quaternion": [1.0, 0.0, 0.0, 0.0],
+                "scale": [1.0, 1.0, 1.0],
+            }
+            if os.path.exists(main_transform_file):
+                with open(main_transform_file, 'r') as file:
+                    lines = file.readlines()
+                    for line in lines:
+                        if line.startswith('TX:'):
+                            transform_data["location"][0] = float(line.split(':')[1].strip())
+                        elif line.startswith('TY:'):
+                            transform_data["location"][1] = float(line.split(':')[1].strip())
+                        elif line.startswith('TZ:'):
+                            transform_data["location"][2] = float(line.split(':')[1].strip())
+                        elif line.startswith('RW:'):
+                            transform_data["rotation_quaternion"][0] = float(line.split(':')[1].strip())
+                        elif line.startswith('RX:'):
+                            transform_data["rotation_quaternion"][1] = float(line.split(':')[1].strip())
+                        elif line.startswith('RY:'):
+                            transform_data["rotation_quaternion"][2] = float(line.split(':')[1].strip())
+                        elif line.startswith('RZ:'):
+                            transform_data["rotation_quaternion"][3] = float(line.split(':')[1].strip())
+                        elif line.startswith('SX:'):
+                            transform_data["scale"][0] = float(line.split(':')[1].strip())
+                        elif line.startswith('SY:'):
+                            transform_data["scale"][1] = float(line.split(':')[1].strip())
+                        elif line.startswith('SZ:'):
+                            transform_data["scale"][2] = float(line.split(':')[1].strip())
+
+
+            obj.location = Vector(transform_data["location"])
+            obj.rotation_mode = 'QUATERNION'
+            obj.rotation_quaternion = Quaternion(transform_data["rotation_quaternion"])
+            obj.scale = Vector(transform_data["scale"])
+            obj.location = Vector(transform_data["location"])
+            obj.rotation_mode = 'QUATERNION'
+            obj.rotation_quaternion = Quaternion(transform_data["rotation_quaternion"])
+            obj.scale = Vector(transform_data["scale"])
+            bpy.ops.object.transform_apply(location=True, rotation=True, properties=True)
+                
+
+
+     
 # ================== FUNCTIONS ==================
 def read_transform_from_file(filepath):
     transform_data = {

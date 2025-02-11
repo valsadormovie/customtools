@@ -63,7 +63,12 @@ class XTD_PT_UtilityTools(bpy.types.Panel):
             row.label(text="MATERIAL TOOLS:", icon="TEXTURE_DATA")
             row = box.row(align=True)
             check_selected_active_button(row)
+            row.operator("xtd_tools.lilycapturemerger", text="MERGE MATERIAL TEXTURES", icon='IMAGE_RGB')
+            row = box.row(align=True)
+            row.operator("xtd_tools.merge_by_nameprefix", text="MERGE BY NAME PREFIX", icon='IMAGE_RGB')
+            row = box.row(align=True)
             row.operator("xtd_tools.purgeunusedmaterial", text="PURGE UNUSED", icon='MATERIAL_DATA')
+            row = box.row(align=True)
             row.operator("xtd_tools.remove_allmaterials", text="REMOVE ALL", icon="TRASH")
         
         layout = self.layout
@@ -107,7 +112,7 @@ class XTD_OT_MergeByDistance(global_settings.XTDToolsOperator):
             for obj in bpy.context.scene.objects:
                 if not global_settings.ProcessManager.is_running():
                     self.report({'INFO'}, "Process stopped by user.")
-                    bpy.context.preferences.edit.use_global_undo = True
+                    
                     return {'CANCELLED'}
                 baseobject = bpy.context.scene.objects.get(obj.name)
                 if not baseobject:
@@ -136,7 +141,7 @@ class XTD_OT_MergeByDistance(global_settings.XTDToolsOperator):
             for base_obj in selected_objs:
                 if not global_settings.ProcessManager.is_running():
                     self.report({'INFO'}, "Process stopped by user.")
-                    bpy.context.preferences.edit.use_global_undo = True
+                    
                     return {'CANCELLED'}
                 objects_to_join = [base_obj]
                 
@@ -171,7 +176,6 @@ class XTD_OT_MergeByDistance(global_settings.XTDToolsOperator):
         return {'FINISHED'}
 
 def is_above_and_within_distance(obj1, obj2, distance_limit=100):
-    bpy.context.preferences.edit.use_global_undo = False
     obj1_bb_min_z = min(
         [(obj1.matrix_world @ Vector(corner)).z for corner in obj1.bound_box]
     )
@@ -184,7 +188,6 @@ def is_above_and_within_distance(obj1, obj2, distance_limit=100):
     obj1_xy = Vector(obj1.location.xy)
     obj2_xy = Vector(obj2.location.xy)
     xy_distance = (obj1_xy - obj2_xy).length
-    bpy.context.preferences.edit.use_global_undo = True
     
     return xy_distance <= distance_limit
     
@@ -263,8 +266,13 @@ class XTD_OT_SmartGridMerge(global_settings.XTDToolsOperator):
                 bar()
         
         bpy.ops.xtd_tools.merge_by_distance()
+        
+        for obj in bpy.data.objects:
+            UUIDManager.ensure_project_uuid()
+        
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
         self.report({'INFO'}, "Smart Grid Merge completed successfully!")
+        PopupController(title="UUID GENERATOR", message=f"{len(bpy.data.objects)} objektuma frissítve lett az új nevekkel!", buttons=[("Mentés", "wm.save_mainfile", "CHECKMARK"), ("Nem", "", "CHECKMARK")])
         return {'FINISHED'}
 
     
@@ -305,7 +313,7 @@ class XTD_OT_xtdtools_selectboundaryloops(global_settings.XTDToolsOperator):
 
         if not global_settings.ProcessManager.is_running():
             self.report({'INFO'}, "Process stopped by user.")
-            bpy.context.preferences.edit.use_global_undo = True
+            
             return {'CANCELLED'}
         global_deselect(context, all_objects=False)
         bpy.ops.object.mode_set(mode = 'EDIT')
@@ -387,6 +395,131 @@ class XTD_OT_nonmanifoldedgesplit(global_settings.XTDToolsOperator):
         bpy.ops.mesh.select_non_manifold()
         bpy.ops.mesh.edge_split()
         bpy.ops.object.mode_set(mode = 'OBJECT')
+        return {'FINISHED'}
+
+# ----------- Nonmanifold Edgesplit -----------
+class XTD_OT_merge_by_nameprefix(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.merge_by_nameprefix"
+    bl_label = "Merge by name prefix"
+
+    def execute(self, context):
+        bl_label = self.bl_label
+        #-STATUS-BAR--------------------------------------------------------------------------
+        global_settings.statusheader(bl_label,functiontext="Merge objects by name prefix...")
+        #-STATUS-BAR--------------------------------------------------------------------------
+        
+        prefix_length=10, 
+        purge_interval=40
+        
+        if bpy.context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        
+        selected_objs = list(bpy.context.selected_objects)
+        if not selected_objs:
+            print("Nincs kijelölt objektum!")
+            return
+        
+        groups = {}
+        for obj in selected_objs:
+            key = obj.name[:prefix_length]
+            groups.setdefault(key, []).append(obj)
+        
+        join_count = 0
+        with alive_bar(len(groups.items()), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
+            for key, group in groups.items():
+                if len(group) < 2:
+                    continue
+                bpy.ops.object.select_all(action='DESELECT')
+                for obj in group:
+                    obj.select_set(True)
+                bpy.context.view_layer.objects.active = group[0]
+                bpy.ops.object.join()
+                join_count += 1
+                print(f"Join group {key} -> join count: {join_count}")
+                
+                if join_count % purge_interval == 0:
+                    bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+                    print(f"Purge executed after {join_count} join operations.")
+                bar()
+        print("Join finished. Total groups joined:", join_count)
+
+        return {'FINISHED'}
+        
+# ----------- Nonmanifold Edgesplit -----------
+class XTD_OT_lilycapturemerger(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.lilycapturemerger"
+    bl_label = "Lily capture merger"
+    
+    def execute(self, context):
+        processed_count = 0 
+        CACHE_CLEAR_INTERVAL = 4
+        REMOVE_DUPLICATES_THRESHOLD = 0.5
+        
+        bl_label = self.bl_label
+        #-STATUS-BAR--------------------------------------------------------------------------
+        global_settings.statusheader(bl_label,functiontext="Merge material images by Lily Capture Packer...")
+        #-STATUS-BAR--------------------------------------------------------------------------
+        
+        if bpy.context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        
+        selected_objs = list(bpy.context.selected_objects)
+        if not selected_objs:
+            print("Nincs kijelölt objektum!")
+            return
+        
+        with alive_bar(len(selected_objs), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
+            for obj in selected_objs:
+                bpy.ops.object.select_all(action='DESELECT')
+                obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.mark_sharp(clear=True)
+                bpy.ops.mesh.separate(type='MATERIAL')
+                bpy.ops.object.mode_set(mode='OBJECT')
+                active_obj = bpy.context.active_object
+                if len(bpy.context.selected_objects) > 1:
+                    bpy.ops.object.lily_texture_packer(spacing=0)
+                    active_obj.select_set(True)
+                    bpy.context.view_layer.objects.active = active_obj
+                    bpy.ops.object.join()
+                    
+                    if obj and obj.type == 'MESH' and obj.active_material:
+                        active_material = obj.active_material
+                        obj.data.materials.clear() 
+                        obj.data.materials.append(active_material)
+                        active_material.name = "M_" + str(obj.name)
+                        if active_material and active_material.node_tree:
+                            active_material.node_tree.nodes["Principled BSDF"].inputs[13].default_value = 0
+
+                            base_color = active_material.node_tree.nodes['Image Texture']
+                            image = base_color.image
+                            base_color.select = True
+                            bpy.data.images[image.name].scale( 1024, 1024 )
+                            image.name = "T_" + str(obj.name)
+                            filepathimage = image.name + ".jpg"
+                            texturepath = os.path.dirname("G:/PORTAL_BP_PROJECT_RENDSZEREZETT/GLTF/BP17BAKED/")
+                            filepath = os.path.join(texturepath, filepathimage)
+                            bpy.data.images[image.name].save_render(filepath)
+                mesh = active_obj.data
+                bm = bmesh.new()
+                bm.from_mesh(mesh)
+                bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=REMOVE_DUPLICATES_THRESHOLD)
+                bm.to_mesh(mesh)
+                bm.free()
+                mesh.update()
+
+                processed_count += 1
+                
+                if processed_count % CACHE_CLEAR_INTERVAL == 0:
+                    bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+                    #-STATUS-BAR--------------------------------------------------------------------------
+                    global_settings.statusheader(bl_label,functiontext="Merge material images by Lily Capture Packer...")
+                    #-STATUS-BAR--------------------------------------------------------------------------
+                bar()
+                
+            bpy.ops.object.select_all(action='DESELECT')
         return {'FINISHED'}
 
 # ----------- Purge Unused Materials -----------

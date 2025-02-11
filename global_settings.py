@@ -179,17 +179,14 @@ class ProcessManager:
     def stop(cls):
         cls._is_running = False
         print("Folyamat leállítva.")
-        bpy.context.preferences.edit.use_global_undo = True
 
     @classmethod
     def start(cls):
         cls._is_running = True
-        bpy.context.preferences.edit.use_global_undo = False
 
     @classmethod
     def reset(cls):
         cls._is_running = True
-        bpy.context.preferences.edit.use_global_undo = True
 
 # =============================================
 # VISIBILITY CONTROLLER
@@ -368,10 +365,6 @@ import random
 import string
 from alive_progress import alive_bar
 
-# Feltételezzük, hogy XTDToolsOperator és UUIDManager már definiálva vannak a projektedben.
-# Példa:
-# from .global_settings_base import XTDToolsOperator, UUIDManager
-
 class XTD_OT_TransferModels(XTDToolsOperator):
     bl_idname = "xtd_tools.transfermodels"
     bl_label = "Transfer Models"
@@ -447,7 +440,6 @@ class XTD_OT_TransferModels(XTDToolsOperator):
     )
 
     def execute(self, context):
-        # Ha a node_group vagy world meg van adva, azt külön kezeljük:
         if self.node_group.strip() != "" or self.world.strip() != "":
             result = self.process_utils(context, None)
             if 'CANCELLED' in result:
@@ -455,7 +447,6 @@ class XTD_OT_TransferModels(XTDToolsOperator):
             self.report({'INFO'}, "Successfully linked node group or world.")
             return {'FINISHED'}
 
-        # Fő ágon: a modellek behozatala (transfer)
         selected_base_tile_names = set()
         selected_base_exits = set()
 
@@ -838,14 +829,8 @@ def print_status(batch_index, total_batches, total_objects, current_index):
 def bake_render_settings():
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    try:
-        extrusion = float(scene.xtd_custom_bake_extrusion)
-    except:
-        extrusion = 0.5
-    try:
-        raydistance = float(scene.xtd_custom_bake_raydistance)
-    except:
-        raydistance = 100
+    extrusion = 15
+    raydistance = 25
     scene.cycles.feature_set = 'EXPERIMENTAL'
     scene.cycles.device = 'GPU'
     scene.cycles.use_denoising = False
@@ -948,25 +933,6 @@ def export_ply_object(obj, export_dir):
         export_triangulated_mesh=False
     )
     bpy.data.objects.remove(obj, do_unlink=True)
-
-def process_batch(context, objects):
-    prefs = bpy.context.scene.xtd_tools_props
-    export_dir = os.path.dirname(bpy.data.filepath)
-    batch_size = int(prefs.batch_mode) if prefs.batch_mode != "DISABLED" else 1
-    start_time = time.time()
-    total_objects = len(objects)
-    for i, obj in enumerate(objects):
-        if i % batch_size == 0 and prefs.show_status:
-            elapsed = time.time() - start_time
-            print(f"Processed {i}/{total_objects} objects. Elapsed time: {elapsed:.2f}s")
-        bpy.context.view_layer.objects.active = obj
-        obj.select_set(True)
-        print(f"Processing {obj.name} ({i + 1}/{total_objects})")
-        if prefs.export_ply:
-            export_ply_object(obj, export_dir)
-        obj.select_set(False)
-    if prefs.shutdown_after:
-        threading.Thread(target=shutdown_computer).start()
 
 def shutdown_computer():
     os_name = os.name
