@@ -65,6 +65,8 @@ class XTD_PT_UtilityTools(bpy.types.Panel):
             check_selected_active_button(row)
             row.operator("xtd_tools.lilycapturemerger", text="MERGE MATERIAL TEXTURES", icon='IMAGE_RGB')
             row = box.row(align=True)
+            row.operator("xtd_tools.separate_quad_by_xy", text="SEPARATE QUAD BY XY", icon='MOD_BOOLEAN')
+            row = box.row(align=True)
             row.operator("xtd_tools.merge_by_nameprefix", text="MERGE BY NAME PREFIX", icon='IMAGE_RGB')
             row = box.row(align=True)
             row.operator("xtd_tools.purgeunusedmaterial", text="PURGE UNUSED", icon='MATERIAL_DATA')
@@ -110,6 +112,7 @@ class XTD_OT_MergeByDistance(global_settings.XTDToolsOperator):
         smallbaseobjects = []
         with alive_bar(len(bpy.context.scene.objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
             for obj in bpy.context.scene.objects:
+                obj.select_set(True)
                 if not global_settings.ProcessManager.is_running():
                     self.report({'INFO'}, "Process stopped by user.")
                     
@@ -155,7 +158,7 @@ class XTD_OT_MergeByDistance(global_settings.XTDToolsOperator):
                     except:
                         continue
                 
-                if len(objects_to_join) > 1:
+                if len(objects_to_join) > 0:
                     bpy.context.view_layer.objects.active = base_obj
                     
                     for obj in objects_to_join:
@@ -279,7 +282,8 @@ class XTD_OT_SmartGridMerge(global_settings.XTDToolsOperator):
 class XTD_OT_mergebyname_grid_empty_cage(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.mergebyname_grid_empty_cage"
     bl_label = "Merge by name _E Grid empty cage"
-
+    bl_description = "Join models based on predefined Empty Cube grid"
+    bl_options = {'REGISTER', 'UNDO'}
     def process_object(self, obj):
         batch_size = float(999)
         
@@ -289,6 +293,134 @@ class XTD_OT_mergebyname_grid_empty_cage(global_settings.XTDToolsOperator):
             baseobject.name= baseobject.name + "_E"
 
 
+        return {'FINISHED'}
+    
+class XTD_OT_separate_quad_by_XY(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.separate_quad_by_xy"
+    bl_label = "Separate Quad by XY coordinates"
+    bl_description = "Join models based on predefined Empty Cube grid"
+    bl_options = {'REGISTER', 'UNDO'}
+    def execute(self, context):
+        
+        bl_label = self.bl_label
+        processed_count = 0 
+        CACHE_CLEAR_INTERVAL = 4
+        REMOVE_DUPLICATES_THRESHOLD = 0.2
+        
+        bl_label = self.bl_label
+        #-STATUS-BAR--------------------------------------------------------------------------
+        global_settings.statusheader(bl_label,functiontext="Separate objects only by XY coordinates to Quad...")
+        #-STATUS-BAR--------------------------------------------------------------------------
+        keyboard.add_hotkey("esc", ProcessManager.stop)
+        ProcessManager.start()
+        
+        if bpy.context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        
+        selected_objs = list(bpy.context.selected_objects)
+        if not selected_objs:
+            return {'CANCELLED'}
+        
+        with alive_bar(len(selected_objs), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
+            for obj in selected_objs:
+                if not ProcessManager.is_running():
+                    self.report({'INFO'}, "Process stopped by user.")
+                    return {'CANCELLED'}
+                obj = bpy.context.active_object
+
+                bpy.ops.object.mode_set(mode='EDIT')
+                bm = bmesh.from_edit_mesh(obj.data)
+
+                mat = obj.matrix_world
+                min_x = float('inf')
+                max_x = -float('inf')
+                min_y = float('inf')
+                max_y = -float('inf')
+
+                for v in bm.verts:
+                    co = mat @ v.co
+                    min_x = min(min_x, co.x)
+                    max_x = max(max_x, co.x)
+                    min_y = min(min_y, co.y)
+                    max_y = max(max_y, co.y)
+
+                center_global = Vector(((min_x + max_x) / 2, (min_y + max_y) / 2, 0))
+
+                plane_co_x = Vector((center_global.x, 0, 0))
+                plane_no_x = Vector((1, 0, 0))
+                geom = bm.faces[:] + bm.edges[:] + bm.verts[:]
+                bmesh.ops.bisect_plane(bm, geom=geom, dist=0.001, plane_co=plane_co_x, plane_no=plane_no_x)
+
+                plane_co_y = Vector((0, center_global.y, 0))
+                plane_no_y = Vector((0, 1, 0))
+                geom = bm.faces[:] + bm.edges[:] + bm.verts[:]
+                bmesh.ops.bisect_plane(bm, geom=geom, dist=0.001, plane_co=plane_co_y, plane_no=plane_no_y)
+
+                bmesh.update_edit_mesh(obj.data)
+                bpy.ops.object.mode_set(mode='OBJECT')
+
+                def separate_quadrant(original_obj, quadrant):
+                    if not ProcessManager.is_running():
+                        self.report({'INFO'}, "Process stopped by user.")
+                        return {'CANCELLED'}
+                    bpy.ops.object.select_all(action='DESELECT')
+                    original_obj.select_set(True)
+                    bpy.context.view_layer.objects.active = original_obj
+                    bpy.ops.object.duplicate()
+                    new_obj = bpy.context.active_object
+                    
+                    bpy.ops.object.mode_set(mode='EDIT')
+                    bpy.ops.mesh.select_all(action='DESELECT')
+                    
+                    me = new_obj.data
+                    bm = bmesh.from_edit_mesh(me)
+                    
+                    for face in bm.faces:
+                        center_local = face.calc_center_median()
+                        center_world = new_obj.matrix_world @ center_local
+                        
+                        if quadrant[0] == 1:
+                            cond_x = center_world.x >= center_global.x
+                        else:
+                            cond_x = center_world.x < center_global.x
+                        
+                        if quadrant[1] == 1:
+                            cond_y = center_world.y >= center_global.y
+                        else:
+                            cond_y = center_world.y < center_global.y
+                        
+                        if not (cond_x and cond_y):
+                            face.select = True
+                            
+                    bmesh.update_edit_mesh(me)
+                    bpy.ops.mesh.delete(type='FACE')
+                    bpy.ops.object.mode_set(mode='OBJECT')
+                    
+                    return new_obj
+
+                quad1 = separate_quadrant(obj, (-1, -1))
+                quad2 = separate_quadrant(obj, (1, -1))
+                quad3 = separate_quadrant(obj, (-1, 1))
+                quad4 = separate_quadrant(obj, (1, 1))
+
+                bpy.data.objects.remove(obj, do_unlink=True)
+
+                new_objs = [quad1, quad2, quad3, quad4]
+
+                for o in new_objs:
+                    bpy.ops.object.select_all(action='DESELECT')
+                    o.select_set(True)
+                    bpy.context.view_layer.objects.active = o
+                    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='BOUNDS')
+                
+                processed_count += 1
+                
+                if processed_count % CACHE_CLEAR_INTERVAL == 0:
+                    bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+                bar()
+                
+        bpy.ops.object.select_all(action='DESELECT')
+        ProcessManager.reset()
         return {'FINISHED'}
         
 class XTD_OT_select_small_baseobjects(global_settings.XTDToolsOperator):
@@ -453,7 +585,7 @@ class XTD_OT_lilycapturemerger(global_settings.XTDToolsOperator):
     def execute(self, context):
         processed_count = 0 
         CACHE_CLEAR_INTERVAL = 4
-        REMOVE_DUPLICATES_THRESHOLD = 0.5
+        REMOVE_DUPLICATES_THRESHOLD = 0.2
         
         bl_label = self.bl_label
         #-STATUS-BAR--------------------------------------------------------------------------
