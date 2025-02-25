@@ -135,6 +135,9 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 grid = box.grid_flow(columns=2, align=True)
                 grid.prop(scene, "xtd_custom_bake_extrusion")
                 grid.prop(scene, "xtd_custom_bake_raydistance")
+                grid = box.grid_flow(columns=1, align=True)
+                grid.prop(scene, "xtd_tools_bake_filepath")
+                
                 
                 row = layout.row()
                 row.label(text="CREATE NEW:")
@@ -145,13 +148,20 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row.use_property_decorate = False
                 row.label(text="", icon='UV')
                 row.prop(scene, "xtd_tools_bake_unwrap", expand=True)
-                
+                                                
                 row = box.row(align=True)
                 row.alignment = 'EXPAND'
                 row.use_property_split = True
                 row.use_property_decorate = False
                 row.label(text="", icon='UV_DATA')
                 row.prop(scene, "xtd_tools_bake_newuvmap", expand=True)
+                                
+                row = box.row(align=True)
+                row.alignment = 'EXPAND'
+                row.use_property_split = True
+                row.use_property_decorate = False
+                row.label(text="", icon='TEXTURE')
+                row.prop(scene, "xtd_tools_bake_texture_fileformat", expand=True)
                 
                 row = box.row(align=True)
                 row.alignment = 'EXPAND'
@@ -159,6 +169,13 @@ class XTD_PT_TileTools(bpy.types.Panel):
                 row.use_property_decorate = False
                 row.label(text="", icon='MATERIAL')
                 row.prop(scene, "xtd_tools_bake_newmaterial", expand=True)
+                                
+                row = box.row(align=True)
+                row.alignment = 'EXPAND'
+                row.use_property_split = True
+                row.use_property_decorate = False
+                row.label(text="", icon='UV_DATA')
+                row.prop(scene, "xtd_tools_bake_colorgrade", expand=True)
                 
                 row = layout.row()
                 row.label(text="SOURCE TILE RESOLUTION:")
@@ -353,6 +370,15 @@ bpy.types.Scene.xtd_tools_bake_newuvmap = bpy.props.EnumProperty(name='UVMAP',
         ),
         default = 'NO'
 )
+
+bpy.types.Scene.xtd_tools_bake_colorgrade = bpy.props.EnumProperty(name='COLORGRADE',
+        description='COLORGRADE',
+        items =  (
+            ('YES','YES',''),
+            ('NO','NO','')
+        ),
+        default = 'NO'
+)
     
 bpy.types.Scene.xtd_tools_bake_newmaterial = bpy.props.EnumProperty(name='MATERIAL',
         description='MATERIAL',
@@ -373,6 +399,22 @@ bpy.types.Scene.xtd_tools_bake_texture_resolution = bpy.props.EnumProperty(
         ("4096", "4096x4096", ""),
     ],
     default="4096"
+)
+
+bpy.types.Scene.xtd_tools_bake_texture_fileformat = bpy.props.EnumProperty(
+    name="Bake Texture Fileformat",
+    items=[
+        ("PNG", "PNG", ""),
+        ("JPEG", "JPEG", ""),
+    ],
+    default="PNG"
+)
+
+bpy.types.Scene.xtd_tools_bake_filepath = bpy.props.StringProperty(
+    name="Bake Filepath",
+    description="Path to the Bake texture file",
+    subtype='DIR_PATH',
+    default=r"//"
 )
 
 # ================== Show Available Operators ==================
@@ -397,11 +439,13 @@ class XTD_OT_ShowAvailableTileResolution(global_settings.XTDToolsOperator):
         bpy.context.space_data.shading.color_type = 'VERTEX'
 
         for obj in bpy.data.objects:
+            if not obj.visible_get():
+                continue
             if obj.name in tile_names and obj.library is None:
                 obj.color = color
             elif obj.name in tile_names and obj.library is not None:
                 continue
-
+        clear_reports()
         self.report({'INFO'}, f"{self.resolution} zoom level highlighted.")
         return {'FINISHED'}
 
@@ -418,6 +462,8 @@ class XTD_OT_RemoveShows(global_settings.XTDToolsOperator):
         bpy.context.space_data.shading.color_type = 'MATERIAL'
 
         for obj in bpy.data.objects:
+            if not obj.visible_get():
+                continue
             if obj.name in tile_names and obj.library is None:
                 obj.color = (1.0, 1.0, 1.0, 1.0)
             elif obj.name in tile_names and obj.library is not None:
@@ -442,6 +488,8 @@ class XTD_OT_AddUUID(global_settings.XTDToolsOperator):
         has_changes = False
         project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
         for obj in bpy.data.objects:
+            if not obj.visible_get():
+                continue
             if obj.type == 'MESH':
                 obj = bpy.data.objects.get(obj.name)
                 if obj:
@@ -511,6 +559,7 @@ class XTD_OT_UnlinkTileResolutions(global_settings.XTDToolsOperator):
         if len(temp_collection.objects) < 1:
             bpy.data.collections.remove(temp_collection)
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+        clear_reports()
         return {'FINISHED'}
 
 bpy.types.Scene.linked_target_collection = bpy.props.PointerProperty(
@@ -609,12 +658,19 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
                 
                 temp_collection_name = "TEMP_BAKE"
                 texture_resolution = int(scene.xtd_tools_bake_texture_resolution)
-                
+                if scene.xtd_tools_bake_texture_fileformat == "JPEG":
+                    scene.render.image_settings.file_format = 'JPEG'
+                    
+                if scene.xtd_tools_bake_texture_fileformat == "PNG":
+                    scene.render.image_settings.file_format = 'PNG'
+                    
                 bpy.ops.object.select_all(action = 'DESELECT')
                 global_settings.UUIDManager.ensure_project_uuid()
                 global_settings.UUIDManager.deduplicate_project_uuids()
                 
                 for obj in selected_objects:
+                    if not obj.visible_get():
+                        continue
                     if not ProcessManager.is_running():
                         self.report({'INFO'}, "Process stopped by user.")
                         return {'CANCELLED'}
@@ -650,22 +706,45 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
                         texture_node = nodes.new('ShaderNodeTexImage')
                         texture_node.image = image
                         texture_node.select = True
+                        texture_node.location = (-100, 200)
                         material.node_tree.nodes.active = texture_node
+
+                        bsdf_node = nodes.new('ShaderNodeBsdfPrincipled')
+                        bsdf_node.location = (400, 200)
+                        bsdf_node.inputs[13].default_value = 0
                         
-                        bsdf_node = nodes.new('ShaderNodeBsdfDiffuse')
                         output_node = nodes.new('ShaderNodeOutputMaterial')
+                        output_node.location = (800, 200)
                         
-                        links.new(texture_node.outputs['Color'], bsdf_node.inputs['Color'])
-                        links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
+                        
+                        node_group = bpy.data.node_groups.get('PROCEDURAL_TEXTURE_LAND')
+                        if scene.xtd_tools_bake_colorgrade == "YES":
+                            if node_group:
+                                group_node = nodes.new(type='ShaderNodeGroup')
+                                group_node.location = (200, 200)
+                                group_node.node_tree = node_group
+                                links.new(bsdf_node.outputs[0], output_node.inputs[0])
+                                links.new(group_node.outputs[0], bsdf_node.inputs[0])
+                                links.new(group_node.outputs[1], bsdf_node.inputs[5])
+                                links.new(group_node.outputs[2], bsdf_node.inputs[2])
+                                links.new(group_node.outputs[3], bsdf_node.inputs[13])
+                                links.new(group_node.outputs[4], bsdf_node.inputs[3])
+                                links.new(texture_node.outputs[0], group_node.inputs[0])
+                        else:
+                            links.new(bsdf_node.outputs[0], output_node.inputs[0])
+                            links.new(texture_node.outputs[0], bsdf_node.inputs[0])
 
                     if scene.xtd_tools_bake_unwrap == "YES":
                         bpy.ops.object.mode_set(mode = 'EDIT')
                         bpy.ops.mesh.select_all(action='SELECT')
-                        bpy.ops.uv.smart_project()
+                        bpy.ops.mesh.region_to_loop()
+                        bpy.ops.mesh.mark_seam(clear=False)
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        bpy.ops.uv.smart_project(angle_limit=0.698132, margin_method='ADD', rotate_method='AXIS_ALIGNED_Y', island_margin=1, area_weight=1, scale_to_bounds=False)
                         bpy.ops.object.mode_set(mode = 'OBJECT')
 
                     bpy.ops.xtd_tools.transfermodels(
-                        transfer_mode="LINK",
+                        transfer_mode="APPEND",
                         source_mode="MASTERFILE",
                         objects="SELECTED",
                         base_collection="COLLECTIONNAME",
@@ -678,7 +757,7 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
                         self.report({'WARNING'}, "TEMP_BAKE collection not found after linking.")
                         return {'CANCELLED'}
 
-                    linked_objects = [o for o in temp_collection.objects if o.library]
+                    linked_objects = [o for o in temp_collection.objects]
                     if not linked_objects:
                         self.report({'WARNING'}, "No linked objects found in TEMP_BAKE.")
                         return {'CANCELLED'}
@@ -695,16 +774,28 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
                     except Exception as e:
                         self.report({'ERROR'}, f"Bake failed: {e}")
                         return {'CANCELLED'}
-
+                    
+                    
+                    
+                    
+                    baked_image = bpy.data.images[image.name]
+                    filepath = bpy.data.filepath
+                    directory = os.path.dirname(filepath)
+                    baked_image_destination = os.path.join(os.path.dirname(scene.xtd_tools_bake_filepath), f"{baked_image.name}.{scene.xtd_tools_bake_texture_fileformat}") 
+                    print(f'PATH: {baked_image_destination}')
+                    
+                    baked_image.save_render(baked_image_destination, scene=bpy.context.scene)
+                    
+                    
                     for linked_obj in linked_objects:
-                        temp_collection.objects.unlink(linked_obj)
+                        bpy.context.scene.linked_target_collection = temp_collection
+                        bpy.ops.xtd_tools.unlink_all_tiles()
                     bar()
-                    bpy.ops.image.save_all_modified()
-                bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+                    # bpy.ops.image.save_all_modified()
                 bpy.ops.object.select_all(action = 'DESELECT')
                     
             bpy.ops.object.select_all(action = 'DESELECT')
-            bpy.data.collections.remove(temp_collection)
+            clear_reports()
             ProcessManager.reset()
             self.report({'INFO'}, f"Successfully baked {self.resolution} resolution for {obj.name}.")
             return {'FINISHED'}
@@ -908,7 +999,6 @@ class XTD_OT_AddColorgrade(global_settings.XTDToolsOperator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def process_object(self, obj):
-        bpy.context.preferences.edit.use_global_undo = False
         object_names = [obj.name for obj in bpy.context.scene.objects if obj.type == 'MESH']
         object_names = ",".join(object_names)
         for mat in bpy.data.materials:
@@ -920,6 +1010,8 @@ class XTD_OT_AddColorgrade(global_settings.XTDToolsOperator):
                 break
         all_scene_object = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
         for obj in all_scene_object:
+            if not obj.visible_get():
+                continue
             set_active_object(context, obj)
             for mat in obj.data.materials:
                 bpy.ops.object.material_slot_remove_unused()
@@ -946,7 +1038,6 @@ class XTD_OT_AddColorgrade(global_settings.XTDToolsOperator):
                 principled.inputs[12].default_value = 0
             
            
-        bpy.context.preferences.edit.use_global_undo = True
         return {'FINISHED'}
 
 class XTD_OT_RemoveColorgrade(global_settings.XTDToolsOperator):
@@ -959,6 +1050,8 @@ class XTD_OT_RemoveColorgrade(global_settings.XTDToolsOperator):
         bpy.context.preferences.edit.use_global_undo = False
         all_scene_object = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
         for obj in all_scene_object:
+            if not obj.visible_get():
+                continue
             set_active_object(context, obj)
             for mat in obj.data.materials:
                 colorgrade = bpy.data.node_groups.get("PROCEDURAL_TEXTURE_LAND")
