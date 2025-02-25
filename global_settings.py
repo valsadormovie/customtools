@@ -19,6 +19,7 @@ from bpy import context
 
 # Harmadik féltől származó modulok
 import grapheme
+import cv2
 import numpy as np
 from mathutils.kdtree import KDTree
 from alive_progress import alive_bar
@@ -31,6 +32,7 @@ panels = [
     "tiletools_panel",
     "tilelodcamera_panel",
     "modifiertools_panel",
+    "materialid_panel",
     "vertexgrouptools_panel",
     "vertexcolortools_panel",
     "utilitytools_panel",
@@ -115,6 +117,7 @@ class XTDToolsOperator(bpy.types.Operator):
     _processed_objects = set()
     
     def execute(self, context):
+
         bl_label = self.bl_label
         statusheader(bl_label, functiontext="Working selected objects...")
         self.__class__._processed_objects.clear()
@@ -144,6 +147,8 @@ class XTDToolsOperator(bpy.types.Operator):
                 print_status(batch_index + 1, total_batches, total_objects, batch_index * batch_size + len(batch_objects))
             with alive_bar(len(batch_objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
                 for obj in batch_objects:
+                    if not obj.visible_get():
+                        continue
                     if not ProcessManager.is_running():
                         self.report({'INFO'}, "Process stopped by user.")
                         return {'CANCELLED'}
@@ -159,6 +164,7 @@ class XTDToolsOperator(bpy.types.Operator):
         if bpy.context.scene.shutdown_after == "YES":
             threading.Thread(target=shutdown_computer).start()
         ProcessManager.reset()
+        clear_reports()
         self.report({'INFO'}, "Process completed.")
         return {'FINISHED'}
 
@@ -267,6 +273,7 @@ bpy.types.Scene.tool_visibility_mode = bpy.props.EnumProperty(
 class UUIDManager:
     @staticmethod
     def parse_project_uuid(project_uuid):
+        
         if project_uuid is None:
             obj = bpy.context.active_object
             UUIDManager.create_object_uuid(obj)
@@ -298,6 +305,8 @@ class UUIDManager:
     def ensure_project_uuid():
         project_filename = os.path.basename(bpy.data.filepath).replace(".blend", "")
         for obj in bpy.data.objects:
+            if not obj.visible_get():
+                continue
             if obj.type == 'MESH': 
                 obj = bpy.data.objects.get(obj.name)
                 if obj:
@@ -341,11 +350,14 @@ class UUIDManager:
             obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|APPEND|{UUIDManager.generate_random_hash()}"
             if PROPERTY_PROJECT_UUID in obj:
                 obj.property_overridable_library_set('["project_uuid"]', True)
+                clear_reports()
 
     @staticmethod
     def deduplicate_project_uuids():
         seen_uuids = {}
         for obj in bpy.data.objects:
+            if not obj.visible_get():
+                continue
             if obj.type == 'MESH' and obj.get("project_uuid"):
                 uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
                 if uuid_data["uuid_transfermode"] != "LINK":
@@ -463,7 +475,6 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                 for obj in selected_objs:
                     uuid_data = UUIDManager.parse_project_uuid(obj["project_uuid"])
                     if uuid_data and uuid_data["uuid_base_tile_name"]:
-                        # Helyes hozzárendelés, az "=" operátorral:
                         uuid_transfermode = uuid_data["uuid_transfermode"]
                         if uuid_transfermode == "LINK":
                             base_tile_name = uuid_data["uuid_base_tile_name"]
@@ -594,7 +605,6 @@ class XTD_OT_TransferModels(XTDToolsOperator):
         return None
 
     def process_utils(self, context, source_file):
-        # Átmeneti megoldás node_group vagy world átvitelére
         if self.node_group:
             try:
                 with bpy.data.libraries.load(source_file, link=(self.transfer_mode == 'LINK')) as (data_from, data_to):
@@ -662,6 +672,7 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                 temp_collection.objects.unlink(obj)
                 bpy.data.objects.remove(obj, do_unlink=True)
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+        clear_reports()
         return {'FINISHED'}
 
     def transfer_objects(self, source_file, selected_project_uuids):
@@ -687,11 +698,10 @@ class XTD_OT_TransferModels(XTDToolsOperator):
                     unique_id = obj.get("unique_id", "NO_ID")
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     obj["project_uuid"] = f"{project_filename}|{unique_id}|{timestamp}|{self.transfer_mode}|{UUIDManager.generate_random_hash()}"
-                    # Csak akkor hozzuk létre az override‑ot, ha az objektum library-re hivatkozik
-                    # és rendelkezik az override_library_create metódussal.
                     if obj.library is not None and hasattr(obj, "override_library_create"):
                         if obj.override_library is None:
                             obj.override_library_create(hierarchy=True)
+                            clear_reports()
         except Exception as e:
             print(f"Error during transfer: {e}")
             return linked_objects
@@ -709,6 +719,7 @@ class XTD_Reload_App(XTDToolsOperator):
         os.system("cls")
         print("Reload XTD Tools modules...")
         bpy.ops.script.reload()
+        clear_reports()
         return {'FINISHED'}
 
 # =============================================
@@ -818,6 +829,7 @@ def statusheader(bl_label, functiontext):
     bg_hex(f"{darkgrey}  {yellow}{functiontext}{ft_q * ws}{yellow.OFF}{darkgrey.OFF}", "#161616")
     bg_hex(f"{darkgrey}__{wq * wl}{darkgrey.OFF}", "#161616")
     bg_hex(f"\n", "#161616")
+    clear_reports()
 
 def print_status(batch_index, total_batches, total_objects, current_index):
     darkgrey, grey, yellow, wq, ws, wl = colors()
@@ -829,8 +841,11 @@ def print_status(batch_index, total_batches, total_objects, current_index):
 def bake_render_settings():
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    extrusion = 15
-    raydistance = 25
+    scene.render.image_settings.quality = 100
+    scene.render.image_settings.color_depth = '8'
+    scene.view_settings.view_transform = 'Standard'
+    extrusion = float(scene.xtd_custom_bake_extrusion)
+    raydistance = float(scene.xtd_custom_bake_raydistance)
     scene.cycles.feature_set = 'EXPERIMENTAL'
     scene.cycles.device = 'GPU'
     scene.cycles.use_denoising = False
@@ -922,6 +937,12 @@ def selected_objects(self, context):
         return {'CANCELLED'}
     return selected_objects
 
+def clear_reports():
+    try:
+        bpy.context.window_manager.reports.clear()
+    except AttributeError:
+        pass
+
 def export_ply_object(obj, export_dir):
     filepath = os.path.join(export_dir, f"{obj.name}.ply")
     bpy.ops.wm.ply_export(
@@ -933,6 +954,7 @@ def export_ply_object(obj, export_dir):
         export_triangulated_mesh=False
     )
     bpy.data.objects.remove(obj, do_unlink=True)
+    clear_reports()
 
 def shutdown_computer():
     os_name = os.name
