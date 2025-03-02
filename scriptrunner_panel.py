@@ -3,7 +3,7 @@
 #-------------------------------------------------
 from .global_settings import *
 import re
-
+disable_cache()
 # ================== PANEL =================
 class XTD_PT_ScriptRunner(bpy.types.Panel):
     bl_label = "SCRIPT RUNNER"

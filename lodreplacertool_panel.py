@@ -2,6 +2,7 @@
 #-LODREPLACERTOOL_PANEL.py
 #-------------------------------------------------
 from .global_settings import *
+disable_cache()
 # ================== PANEL =================
 class XTD_PT_LODReplacer(bpy.types.Panel):
     bl_label = "LOD Replacer"

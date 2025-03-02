@@ -3,7 +3,7 @@
 #-------------------------------------------------
 
 from .global_settings import *
-
+disable_cache()
 # ================== PANEL =================
 class XTD_PT_TileToolsCamera(bpy.types.Panel):
     bl_label = "Tile Tools Camera"
@@ -11,7 +11,15 @@ class XTD_PT_TileToolsCamera(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "XTD Tools"
-
+    
+    @classmethod
+    def poll(cls, context):
+        return VisibilityController.check_visibility(
+            context, 
+            panel_name="tilelodcamera_panel", 
+            require_selected=True, 
+            require_prefix=True
+        )
     def draw(self, context):
         scene = context.scene
         layout = self.layout

@@ -588,168 +588,180 @@ class XTD_OT_BakeTileResolution(global_settings.XTDToolsOperator):
     resolution: bpy.props.StringProperty()
     blend_file: bpy.props.StringProperty()
 
-    def pre_process_object(self, context):
+    def execute(self, context):
         scene = bpy.context.scene
-        bake_render_settings()
-        bpy.context.scene.render.bake.target = 'IMAGE_TEXTURES'
+        import io
+        from contextlib import redirect_stdout
+        keyboard.add_hotkey("esc", ProcessManager.stop)
+        ProcessManager.start()
+        stdout = io.StringIO()
         
-        if scene.xtd_tools_bake_texture_fileformat == "JPEG":
-            scene.render.image_settings.file_format = 'JPEG'
-            
-        if scene.xtd_tools_bake_texture_fileformat == "PNG":
-            scene.render.image_settings.file_format = 'PNG'
-            
-        global_settings.UUIDManager.ensure_project_uuid()
-        global_settings.UUIDManager.deduplicate_project_uuids()
-        
-    def process_object(self, obj):
-        
-        scene = bpy.context.scene
-        texture_resolution = int(scene.xtd_tools_bake_texture_resolution)
-        temp_collection_name = "TEMP_BAKE"
         extrusion = float(scene.xtd_custom_bake_extrusion)
         raydistance = float(scene.xtd_custom_bake_raydistance)
         
-        import io
-        from contextlib import redirect_stdout
-        stdout = io.StringIO()
-        with redirect_stdout(stdout):
-            if scene.xtd_tools_bake_newuvmap == "YES":
-                for uvmap in obj.data.uv_layers[:-1]:
-                    obj.data.uv_layers.remove(obj.data.uv_layers[0])
-            
-            uuid_data = global_settings.UUIDManager.parse_project_uuid(obj["project_uuid"])
-            obj.data.materials.clear()
-            tile_name = uuid_data["uuid_base_tile_name"]
-            if scene.xtd_tools_bake_newmaterial == "YES":
+        selected_objects = bpy.context.selected_objects
+        if not selected_objects:
+            self.report({'WARNING'}, "No objects selected.")
+            return {'CANCELLED'}
+        selected_objects = [obj for obj in selected_objects]
+        
+        statusheader(bl_label="Bake tile Resolution", functiontext="Working selected objects...")
+        with alive_bar(len(selected_objects), title='   ', length=50, max_cols=98, bar='filling') as bar:
+            with redirect_stdout(stdout):
+                bake_render_settings()
+                bpy.context.scene.render.bake.target = 'IMAGE_TEXTURES'
                 
-                obj.data.materials.clear()
-                
-                material_name = f"M_{tile_name}"
-                material = bpy.data.materials.new(name=material_name)
-                material.use_nodes = True
-                obj.data.materials.append(material)
-                
-                image_name = f"T_{tile_name}"
-                image = bpy.data.images.new(name=image_name, width=texture_resolution, height=texture_resolution, alpha=False)
-                
-                nodes = material.node_tree.nodes
-                links = material.node_tree.links
-                
-                for node in nodes:
-                    nodes.remove(node)
-                
-                texture_node = nodes.new('ShaderNodeTexImage')
-                texture_node.image = image
-                texture_node.select = True
-                texture_node.location = (-100, 200)
-                material.node_tree.nodes.active = texture_node
-
-                bsdf_node = nodes.new('ShaderNodeBsdfPrincipled')
-                bsdf_node.location = (400, 200)
-                bsdf_node.inputs[13].default_value = 0
-                
-                output_node = nodes.new('ShaderNodeOutputMaterial')
-                output_node.location = (800, 200)
-                
-                
-                node_group = bpy.data.node_groups.get('PROCEDURAL_TEXTURE_LAND')
-                if scene.xtd_tools_bake_colorgrade == "YES":
-                    if node_group:
-                        group_node = nodes.new(type='ShaderNodeGroup')
-                        group_node.location = (200, 200)
-                        group_node.node_tree = node_group
-                        links.new(bsdf_node.outputs[0], output_node.inputs[0])
-                        links.new(group_node.outputs[0], bsdf_node.inputs[0])
-                        links.new(group_node.outputs[1], bsdf_node.inputs[5])
-                        links.new(group_node.outputs[2], bsdf_node.inputs[2])
-                        links.new(group_node.outputs[3], bsdf_node.inputs[13])
-                        links.new(group_node.outputs[4], bsdf_node.inputs[3])
-                        links.new(texture_node.outputs[0], group_node.inputs[0])
-                else:
-                    links.new(bsdf_node.outputs[0], output_node.inputs[0])
-                    links.new(texture_node.outputs[0], bsdf_node.inputs[0])
-
-            if scene.xtd_tools_bake_unwrap == "YES":
-                bpy.ops.object.mode_set(mode = 'EDIT')
-                bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.mesh.region_to_loop()
-                bpy.ops.mesh.mark_seam(clear=False)
-                bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.uv.smart_project(angle_limit=0.698132, margin_method='ADD', rotate_method='AXIS_ALIGNED_Y', island_margin=1, area_weight=1, scale_to_bounds=False)
-                bpy.ops.object.mode_set(mode = 'OBJECT')
-            
-            bpy.ops.xtd_tools.transfermodels(
-                transfer_mode="APPEND",
-                source_mode="MASTERFILE",
-                objects="SELECTED",
-                base_collection="COLLECTIONNAME",
-                collection_name=temp_collection_name,
-                zoom_level=self.resolution
-            )
-            
-
-            temp_collection = bpy.data.collections.get(temp_collection_name)
-            if not temp_collection:
-                self.report({'WARNING'}, "TEMP_BAKE collection not found after linking.")
-                return {'CANCELLED'}
-
-            linked_objects = [o for o in temp_collection.objects]
-            if not linked_objects:
-                self.report({'WARNING'}, "No linked objects found in TEMP_BAKE.")
-                return {'CANCELLED'}
-
-            bpy.ops.object.select_all(action='DESELECT')
-            for linked_obj in linked_objects:
-                linked_obj.select_set(True)
-            
-            obj.hide_set(False)
-            bpy.context.view_layer.objects.active = obj
-            obj.select_set(True)
-            
-            if scene.xtd_tools_bake_to_attribute == "YES":
-                color_name = "BakeColor"
-                if color_name not in obj.data.color_attributes:
-                    color = obj.data.color_attributes.new(name="BakeColor", type='FLOAT_COLOR', domain='POINT')
-                else:
-                    obj.data.color_attributes.active = obj.data.color_attributes[color_name]
+                temp_collection_name = "TEMP_BAKE"
+                texture_resolution = int(scene.xtd_tools_bake_texture_resolution)
+                if scene.xtd_tools_bake_texture_fileformat == "JPEG":
+                    scene.render.image_settings.file_format = 'JPEG'
                     
-                bpy.context.scene.cycles.time_limit = 30
-                bpy.context.scene.render.bake.target = 'VERTEX_COLORS'
-            
-            bpy.context.scene.render.bake.use_selected_to_active = True
-            if bpy.context.active_object == None:
-                return {'CANCELLED'}
-            else:
-                try:
-                    bpy.ops.object.bake(type='DIFFUSE')
-                except Exception as e:
-                    self.report({'ERROR'}, f"Bake failed: {e}")
-                    return {'CANCELLED'}
+                if scene.xtd_tools_bake_texture_fileformat == "PNG":
+                    scene.render.image_settings.file_format = 'PNG'
+                    
+                bpy.ops.object.select_all(action = 'DESELECT')
+                global_settings.UUIDManager.ensure_project_uuid()
+                global_settings.UUIDManager.deduplicate_project_uuids()
                 
-                
-            if scene.xtd_tools_bake_to_attribute == "NO":
-                baked_image = bpy.data.images[image.name]
-                filepath = bpy.data.filepath
-                directory = os.path.dirname(filepath)
-                baked_image_destination = bpy.path.abspath(os.path.join(os.path.dirname(scene.xtd_tools_bake_filepath), f"{baked_image.name}.{scene.xtd_tools_bake_texture_fileformat}"))
-                
-                baked_image.save_render(baked_image_destination, scene=bpy.context.scene)
-                
-            working_collection = bpy.data.collections.get("WORKING")
-            ready_collection = bpy.data.collections.get("READY")
-            if working_collection and ready_collection:
-                working_collection.objects.unlink(obj)
-                ready_collection.objects.link(obj)
-                
-            for linked_obj in linked_objects:
-                bpy.context.scene.linked_target_collection = temp_collection
-                bpy.ops.xtd_tools.unlink_all_tiles()
+                for obj in selected_objects:
+                    if not obj.visible_get():
+                        continue
+                    if not ProcessManager.is_running():
+                        self.report({'INFO'}, "Process stopped by user.")
+                        return {'CANCELLED'}
+                    bpy.ops.object.select_all(action = 'DESELECT')
+                    obj = bpy.data.objects[obj.name]
+                    obj.select_set(True)
+                    bpy.context.view_layer.objects.active = obj
+                    if scene.xtd_tools_bake_newuvmap == "YES":
+                        for uvmap in obj.data.uv_layers[:-1]:
+                            obj.data.uv_layers.remove(obj.data.uv_layers[0])
+                    
+                    uuid_data = global_settings.UUIDManager.parse_project_uuid(obj["project_uuid"])
+                    
+                    if scene.xtd_tools_bake_newmaterial == "YES":
+                        obj.data.materials.clear()
+                        tile_name = uuid_data["uuid_base_tile_name"]
+                        material_name = f"M_{tile_name}"
+                        material = bpy.data.materials.new(name=material_name)
+                        material.use_nodes = True
+                        obj.data.materials.append(material)
+                        
+                        image_name = f"T_{tile_name}"
+                        image = bpy.data.images.new(name=image_name, width=texture_resolution, height=texture_resolution, alpha=False)
+                        
+                        nodes = material.node_tree.nodes
+                        links = material.node_tree.links
+                        
+                        for node in nodes:
+                            nodes.remove(node)
+                        
+                        texture_node = nodes.new('ShaderNodeTexImage')
+                        texture_node.image = image
+                        texture_node.select = True
+                        texture_node.location = (-100, 200)
+                        material.node_tree.nodes.active = texture_node
 
-                clear_reports()
+                        bsdf_node = nodes.new('ShaderNodeBsdfPrincipled')
+                        bsdf_node.location = (400, 200)
+                        bsdf_node.inputs[13].default_value = 0
+                        
+                        output_node = nodes.new('ShaderNodeOutputMaterial')
+                        output_node.location = (800, 200)
+                        
+                        
+                        node_group = bpy.data.node_groups.get('PROCEDURAL_TEXTURE_LAND')
+                        if scene.xtd_tools_bake_colorgrade == "YES":
+                            if node_group:
+                                group_node = nodes.new(type='ShaderNodeGroup')
+                                group_node.location = (200, 200)
+                                group_node.node_tree = node_group
+                                links.new(bsdf_node.outputs[0], output_node.inputs[0])
+                                links.new(group_node.outputs[0], bsdf_node.inputs[0])
+                                links.new(group_node.outputs[1], bsdf_node.inputs[5])
+                                links.new(group_node.outputs[2], bsdf_node.inputs[2])
+                                links.new(group_node.outputs[3], bsdf_node.inputs[13])
+                                links.new(group_node.outputs[4], bsdf_node.inputs[3])
+                                links.new(texture_node.outputs[0], group_node.inputs[0])
+                        else:
+                            links.new(bsdf_node.outputs[0], output_node.inputs[0])
+                            links.new(texture_node.outputs[0], bsdf_node.inputs[0])
+
+                    if scene.xtd_tools_bake_unwrap == "YES":
+                        bpy.ops.object.mode_set(mode = 'EDIT')
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        bpy.ops.mesh.region_to_loop()
+                        bpy.ops.mesh.mark_seam(clear=False)
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        bpy.ops.uv.smart_project(angle_limit=0.698132, margin_method='ADD', rotate_method='AXIS_ALIGNED_Y', island_margin=1, area_weight=1, scale_to_bounds=False)
+                        bpy.ops.object.mode_set(mode = 'OBJECT')
+                    
+                    bpy.ops.xtd_tools.transfermodels(
+                        transfer_mode="APPEND",
+                        source_mode="MASTERFILE",
+                        objects="SELECTED",
+                        base_collection="COLLECTIONNAME",
+                        collection_name=temp_collection_name,
+                        zoom_level=self.resolution
+                    )
+
+                    temp_collection = bpy.data.collections.get(temp_collection_name)
+                    if not temp_collection:
+                        self.report({'WARNING'}, "TEMP_BAKE collection not found after linking.")
+                        return {'CANCELLED'}
+
+                    linked_objects = [o for o in temp_collection.objects]
+                    if not linked_objects:
+                        self.report({'WARNING'}, "No linked objects found in TEMP_BAKE.")
+                        return {'CANCELLED'}
+
+                    bpy.ops.object.select_all(action='DESELECT')
+                    for linked_obj in linked_objects:
+                        linked_obj.select_set(True)
+
+                    bpy.context.view_layer.objects.active = obj
+                    obj.select_set(True)
+                    
+                    if scene.xtd_tools_bake_to_attribute == "YES":
+                        obj.data.color_attributes.active = obj.data.color_attributes["VertexColor"]
+                        bpy.context.scene.cycles.time_limit = 30
+                        bpy.context.scene.render.bake.target = 'VERTEX_COLORS'
+                        
+                    if scene.xtd_tools_bake_to_attribute == "YES":
+                        bpy.context.scene.render.bake.use_selected_to_active = True
+                    else:
+                        bpy.context.scene.render.bake.use_selected_to_active = False
+                        
+                    try:
+                        bpy.ops.object.bake(type='DIFFUSE')
+                    except Exception as e:
+                        self.report({'ERROR'}, f"Bake failed: {e}")
+                        return {'CANCELLED'}
+                    baked_image = bpy.data.images[image.name]
+                    filepath = bpy.data.filepath
+                    directory = os.path.dirname(filepath)
+                    baked_image_destination = os.path.join(os.path.dirname(scene.xtd_tools_bake_filepath), f"{baked_image.name}.{scene.xtd_tools_bake_texture_fileformat}") 
+                    print(f'PATH: {baked_image_destination}')
+                    
+                    baked_image.save_render(baked_image_destination, scene=bpy.context.scene)
+                    working_collection = bpy.data.collections.get("WORKING")
+                    ready_collection = bpy.data.collections.get("READY")
+                    if working_collection and ready_collection:
+                        working_collection.objects.unlink(obj)
+                        ready_collection.objects.link(obj)
+                        
+                    for linked_obj in linked_objects:
+                        bpy.context.scene.linked_target_collection = temp_collection
+                        bpy.ops.xtd_tools.unlink_all_tiles()
+                    bar()
+                    # bpy.ops.image.save_all_modified()
+                bpy.ops.object.select_all(action = 'DESELECT')
+                    
+            bpy.ops.object.select_all(action = 'DESELECT')
+            clear_reports()
+            ProcessManager.reset()
+            self.report({'INFO'}, f"Successfully baked {self.resolution} resolution for {obj.name}.")
             return {'FINISHED'}
-            
-
 
 bpy.types.Scene.xtd_custom_bake_extrusion = bpy.props.StringProperty(name="EXTR", description="", default="0.5")
 bpy.types.Scene.xtd_custom_bake_raydistance = bpy.props.StringProperty(name="DIST", description="", default="100")
@@ -963,6 +975,8 @@ class XTD_OT_MAKELAND(global_settings.XTDToolsOperator):
             mod.show_viewport = True
         bpy.context.view_layer.update()
         bpy.ops.object.convert(target='MESH')
+      
+        bpy.ops.xtd_tools.create_vertex_color()
         
         bpy.context.scene.linked_target_collection = temp_collection
         bpy.ops.xtd_tools.unlink_all_tiles()

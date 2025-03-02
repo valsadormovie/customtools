@@ -3,7 +3,7 @@
 #-------------------------------------------------
 
 from .global_settings import *
-
+disable_cache()
 # ================== PANEL =================
 class XTD_PT_ModifierTools(bpy.types.Panel):
     bl_label = "MODIFIER TOOLS"
@@ -138,23 +138,45 @@ class XTD_OT_ApplyModifiersAllAtOnce(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.apply_all_modifiers_atonce"
     bl_label = "Apply All Modifiers at Once Per Batch"
 
-    def process_object(self, obj):
-        modifiers = [mod.name for mod in obj.modifiers]
-        if modifiers:
-            print(f"Obj: {obj.name} | Modifiers: {', '.join(modifiers)}")
-        else:
-            print(f"Obj: {obj.name} | No modifiers present.")
+    def pre_process_batch_objs(self, obj):
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        if int(bpy.context.scene.batch_mode) > 2:
+            obj.hide_set(True)
         for mod in obj.modifiers:
             mod.show_viewport = True
+        if int(bpy.context.scene.batch_mode) < 2:
+            bpy.context.view_layer.update()
+            bpy.ops.object.convert(target='MESH')
+            return {'FINISHED'}
+        return
+
+    def process_object(self, obj):
+        clear_reports()
+        obj.hide_set(False)
+        obj.select_set(True)
+        # modifiers = [mod.name for mod in obj.modifiers]
+        # if modifiers:
+            # print(f"Obj: {obj.name} | Modifiers: {', '.join(modifiers)}")
+        # else:
+            # print(f"Obj: {obj.name} | No modifiers present.")
+        return
+    
+    def post_process_batch_objs(self, context):
         bpy.context.view_layer.update()
         bpy.ops.object.convert(target='MESH')
+        return {'FINISHED'}
         
 # ----------- APPLY ALL MODIFIERS -----------
 class XTD_OT_ApplyModifiersAllAtSequence(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.apply_all_modifiers_sequence"
     bl_label = "Apply All Modifiers at Sequence"
+    
+    def pre_process_object(self, context):
+        batch_size = 1
 
     def process_object(self, obj):
+        bpy.context.view_layer.objects.active = obj
         modifiers = [mod.name for mod in obj.modifiers]
         workmod = len(modifiers)
         reported_percentages = set()
@@ -171,26 +193,27 @@ class XTD_OT_ApplyModifiersAllAtSequence(global_settings.XTDToolsOperator):
                 sys.stdout.flush()
                 reported_percentages.add(percent)
             bpy.ops.object.modifier_apply(modifier=mod.name)
+        return {'FINISHED'}
 
 # ----------- COPY MODIFIERS WITH DISABLED -----------
 class XTD_OT_CopyModifiersDisabled(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.copy_modifiers_disabled_all"
     bl_label = "Copy Modifiers (Disabled All)"
 
-    def process_object(self, obj):
-        batch_size = float(999)
+    def pre_process_object(self, context):
+        batch_size = 999
+    
+    def execute(self, context):
         active_obj = bpy.context.active_object
-        
         if not active_obj:
-            return
+            print("Nincs aktív objektum!")
+            return {'CANCELLED'}
         
         selected_objs = [obj for obj in bpy.context.selected_objects if obj != active_obj]
-        
         if not selected_objs:
-            return
-        
-        global_deselect(context, all_objects=False)
-        
+            print("Nincs más kijelölt objektum!")
+            return {'CANCELLED'}
+            
         for obj in selected_objs:
             for mod in active_obj.modifiers:
                 new_mod = obj.modifiers.new(name=mod.name, type=mod.type)
@@ -202,32 +225,37 @@ class XTD_OT_CopyModifiersDisabled(global_settings.XTDToolsOperator):
                             setattr(new_mod, attr, getattr(mod, attr))
                         except AttributeError:
                             pass 
-            for new_mod in obj.modifiers:
-                new_mod.show_viewport = False
+
+                for new_mod in obj.modifiers:
+                    new_mod.show_viewport = False
 
         print(f"A modifierek sikeresen átmásolva {len(selected_objs)} objektumra.")
+        return {'FINISHED'}
 
 # ----------- COPY MODIFIERS WITH ENABLED -----------
 class XTD_OT_CopyModifiersEnabled(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.copy_modifiers_enabled_all"
     bl_label = "Copy Modifiers (Enabled All)"
 
-    def process_object(self, obj):
-        batch_size = float(999)
+    def pre_process_object(self, context):
+        batch_size = 999
+    
+    def execute(self, context):
         active_obj = bpy.context.active_object
         if not active_obj:
-            return
+            print("Nincs aktív objektum!")
+            return {'CANCELLED'}
         
         selected_objs = [obj for obj in bpy.context.selected_objects if obj != active_obj]
         
         if not selected_objs:
-            return
-            
-        global_deselect(context, all_objects=False)
+            print("Nincs más kijelölt objektum!")
+            return {'CANCELLED'}
+        
         for obj in selected_objs:
             for mod in active_obj.modifiers:
                 new_mod = obj.modifiers.new(name=mod.name, type=mod.type)
-                new_mod.show_viewport = False
+                new_mod.show_viewport = True
 
                 for attr in dir(mod):
                     if not attr.startswith("_") and hasattr(new_mod, attr):
@@ -235,38 +263,53 @@ class XTD_OT_CopyModifiersEnabled(global_settings.XTDToolsOperator):
                             setattr(new_mod, attr, getattr(mod, attr))
                         except AttributeError:
                             pass 
+
             for new_mod in obj.modifiers:
                 new_mod.show_viewport = True
 
         print(f"A modifierek sikeresen átmásolva {len(selected_objs)} objektumra.")
+        return {'FINISHED'}
 
 # ----------- ENABLE / DISABLE EXITING MODIFIERS -----------
 class XTD_OT_EnableAllModifiers(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.enable_all_modifiers"
     bl_label = "Enable All Modifiers"
 
-    def process_object(self, obj):
-        batch_size = float(999)
-        for mod in obj.modifiers:
-            mod.show_viewport = True
+    def execute(self, context):
+        selected_objs = [obj for obj in bpy.context.selected_objects]
+        if not selected_objs:
+            print("Nincs más kijelölt objektum!")
+            return {'CANCELLED'}
+        for obj in selected_objs:
+            for mod in obj.modifiers:
+                mod.show_viewport = True
+        return {'FINISHED'}
 
 class XTD_OT_DisableAllModifiers(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.disable_all_modifiers"
     bl_label = "Disable All Modifiers"
 
-    def process_object(self, obj):
-        batch_size = float(999)
-        for mod in obj.modifiers:
-            mod.show_viewport = False
+    def execute(self, context):
+        selected_objs = [obj for obj in bpy.context.selected_objects]
+        if not selected_objs:
+            print("Nincs más kijelölt objektum!")
+            return {'CANCELLED'}
+        for obj in selected_objs:
+            for mod in obj.modifiers:
+                mod.show_viewport = False
+        return {'FINISHED'}
 
 # ----------- REMOVE MODIFIERS -----------
 class XTD_OT_RemoveAllModifiers(global_settings.XTDToolsOperator):
     bl_idname = "xtd_tools.remove_modifiers"
     bl_label = "Remove All Modifiers"
 
-    def process_object(self, obj):
-        batch_size = float(999)
-        obj.modifiers.clear()
-
-
+    def execute(self, context):
+        selected_objs = [obj for obj in bpy.context.selected_objects]
+        if not selected_objs:
+            print("Nincs más kijelölt objektum!")
+            return {'CANCELLED'}
+        for obj in selected_objs:
+            obj.modifiers.clear()
+        return {'FINISHED'}
 

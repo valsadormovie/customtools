@@ -1,5 +1,9 @@
-# global_settings.py
+#-------------------------------------------------
+#- GLOBAL_SETTINGS_PANEL.py
+#-------------------------------------------------
 import importlib
+import win32gui
+from bpy.app.handlers import persistent
 import inspect
 import datetime
 import random
@@ -17,6 +21,7 @@ from bpy.props import EnumProperty, StringProperty, BoolProperty
 from mathutils import Vector, Quaternion
 from bpy import context
 
+
 # Harmadik féltől származó modulok
 import grapheme
 import cv2
@@ -31,6 +36,7 @@ panels = [
     "global_settings",
     "tiletools_panel",
     "tilelodcamera_panel",
+    "modellertools_panel",
     "modifiertools_panel",
     "materialid_panel",
     "vertexgrouptools_panel",
@@ -46,6 +52,17 @@ registered_classes = []
 global_functions = {}
 registered_properties = []
 global_settings = None
+console_opened = False
+
+restart_enabled = False
+def restart_button():
+    global restart_enabled
+    restart_enabled = True
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+    return None
 
 # =============================================
 # GLOBAL SETTINGS PANEL
@@ -63,11 +80,9 @@ class XTD_GlobalSettingsPanel(bpy.types.Panel):
 
         box = layout.box()
         row = box.row(align=True)
-        row.scale_y = 0.5
         row.label(text="BATCH PROCESS SETTINGS", icon="MOD_MULTIRES")
 
         row = box.row(align=True)
-        row.scale_y = 0.5
         row.prop(scene, "batch_mode", text="MODE")
 
         row = box.row(align=True)
@@ -83,10 +98,6 @@ class XTD_GlobalSettingsPanel(bpy.types.Panel):
         row.use_property_decorate = False
         row.label(text="", icon='SYSTEM')
         row.prop(scene, "shutdown_after", expand=True)
-
-        row = box.row(align=True)
-        row.separator()
-        row.operator("xtd_tools.reloadapp", text="RELOAD APP", icon="RECOVER_LAST")
 
         row = box.row(align=True)
         row.separator()
@@ -117,50 +128,84 @@ class XTDToolsOperator(bpy.types.Operator):
     _processed_objects = set()
     
     def execute(self, context):
-
+        
+        # show_blender_system_console()
+        # console_status = bpy.context.scene.xtd_tools_ensure_console
+        # ensure_console(console_status)
+        
         bl_label = self.bl_label
-        statusheader(bl_label, functiontext="Working selected objects...")
+        
         self.__class__._processed_objects.clear()
         
+        self.pre_process_object(context)
+        
+        self.selected_objects = bpy.context.selected_objects.copy()
         selected_objects = bpy.context.selected_objects
-       
         if not selected_objects:
             self.report({'WARNING'}, "No objects selected.")
             return {'CANCELLED'}
-        
+        if bpy.context.active_object.mode == "OBJECT":
+            bpy.ops.object.select_all(action='DESELECT')
         keyboard.add_hotkey("esc", ProcessManager.stop)
         ProcessManager.start()
-
+        
+        if self.pre_process_batch_objs:
+            for obj in selected_objects:
+                self.pre_process_batch_objs(obj)
+        
         batch_size = int(bpy.context.scene.batch_mode)
         total_objects = len(selected_objects)
         total_batches = (total_objects + batch_size - 1) // batch_size
-
+        batch_count = 0
+        CLEAR_INTERVAL = total_objects / total_batches
         start_time = time.time()
-
-        for batch_index in range(total_batches):
-            batch_objects = selected_objects[batch_index * batch_size: (batch_index + 1) * batch_size]
+        
+        statusheader(bl_label, functiontext="Working selected objects...")
+        with alive_bar(total_batches, title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
             if not ProcessManager.is_running():
                 self.report({'INFO'}, "Process stopped by user.")
                 return {'CANCELLED'}
             
-            if total_batches > 1: 
-                print_status(batch_index + 1, total_batches, total_objects, batch_index * batch_size + len(batch_objects))
-            with alive_bar(len(batch_objects), title='   ', enrich_print=True, enrich_offset=3, length=50, force_tty=True, max_cols=98, bar='filling') as bar:
+            
+            for batch_index in range(total_batches):
+                if not ProcessManager.is_running():
+                    self.report({'INFO'}, "Process stopped by user.")
+                    return {'CANCELLED'}
+                
+                batch_objects = selected_objects[batch_index * batch_size: (batch_index + 1) * batch_size]
+                batch_count += 1
+                if total_batches > 7:
+                    if batch_count % CLEAR_INTERVAL == 0:
+                        statusheader(bl_label, functiontext="Working selected objects...")
+                        print_status(batch_index + 1, total_batches, total_objects, batch_index * batch_size + len(batch_objects))
                 for obj in batch_objects:
-                    if not obj.visible_get():
-                        continue
+                    objname = obj.name
                     if not ProcessManager.is_running():
                         self.report({'INFO'}, "Process stopped by user.")
                         return {'CANCELLED'}
+                    
+                    if not self.post_process_batch_objs:
+                        if not obj.visible_get():
+                            continue
+                    if len(bpy.context.selected_objects) < 1:
+                        obj.select_set(True)
+                        if bpy.context.active_object == None:
+                            bpy.context.view_layer.objects.active = obj
                     self.process_object(obj)
-                    self.__class__._processed_objects.add(obj.name)
-                    bar()
-
-            if bpy.context.scene.export_ply == "YES":
-                export_dir = os.path.dirname(bpy.data.filepath)
-                for obj in batch_objects:
-                    export_ply_object(obj, export_dir)
+                    obj = bpy.data.objects.get(objname)
+                    if obj:
+                        self.__class__._processed_objects.add(objname)
                         
+                self.post_process_batch_objs(context)
+
+                if bpy.context.scene.export_ply == "YES":
+                    export_dir = os.path.dirname(bpy.data.filepath)
+                    for obj in batch_objects:
+                        export_ply_object(obj, export_dir)
+                bar()
+            self.post_process_object(obj)
+            
+        
         if bpy.context.scene.shutdown_after == "YES":
             threading.Thread(target=shutdown_computer).start()
         ProcessManager.reset()
@@ -170,6 +215,18 @@ class XTDToolsOperator(bpy.types.Operator):
 
     def process_object(self, obj):
         raise NotImplementedError("Subclasses must implement process_object method")
+    
+    def pre_process_object(self, context):
+        pass
+
+    def pre_process_batch_objs(self, obj):
+        pass
+    
+    def post_process_object(self, obj):
+        pass
+        
+    def post_process_batch_objs(self, context):
+        pass
 
 # =============================================
 # PROCESS MANAGER
@@ -193,6 +250,22 @@ class ProcessManager:
     @classmethod
     def reset(cls):
         cls._is_running = True
+
+    @classmethod
+    def check_timeout(cls, process_name="No title", timeout=30):
+        def in_process():
+            while True:
+                pass
+        thread = threading.Thread(target=in_process)
+        thread.start()
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            global_settings.ProcessManager.stop()           
+            print(f"Process neve: {process_name}\nThe process was stopped because it exceeded the time limit: {timeout}")
+            return {'CANCELLED'}
+        else:
+            thread.join()
+            thread.cancel()
 
 # =============================================
 # VISIBILITY CONTROLLER
@@ -649,6 +722,12 @@ class XTD_OT_TransferModels(XTDToolsOperator):
             temp_collection.color_tag = "COLOR_01"
             bpy.context.scene.collection.children.link(temp_collection)
         if temp_collection:
+            temp_collection_scene = bpy.context.view_layer.layer_collection.children.get(collection_destination)
+            if not temp_collection_scene:
+                bpy.data.collections.remove(temp_collection)
+                temp_collection = bpy.data.collections.new(collection_destination)
+                temp_collection.color_tag = "COLOR_01"
+                bpy.context.scene.collection.children.link(temp_collection)
             bpy.context.scene.linked_target_collection = temp_collection
         return temp_collection
 
@@ -709,20 +788,6 @@ class XTD_OT_TransferModels(XTDToolsOperator):
 
 
 # =============================================
-# RELOAD ADDON
-# =============================================
-class XTD_Reload_App(XTDToolsOperator):
-    bl_idname = "xtd_tools.reloadapp"
-    bl_label = "Reload Application"
-    
-    def execute(self, context):
-        os.system("cls")
-        print("Reload XTD Tools modules...")
-        bpy.ops.script.reload()
-        clear_reports()
-        return {'FINISHED'}
-
-# =============================================
 # DYNAMIC POPUP ENGINE
 # =============================================
 def PopupController(title="Information", message="Message", icon='INFO', buttons=None):
@@ -744,6 +809,7 @@ bpy.types.Scene.master_txt_filepath = bpy.props.StringProperty(
     default=r"C:\Movie\BP\LINKEDPARTS\MASTER.txt"
 )
 bpy.types.Scene.xtd_tools_activepanels = bpy.props.BoolProperty(name="ACTIVE PANELS", default=False)
+bpy.types.Scene.xtd_tools_ensure_console = bpy.props.BoolProperty(name="Console opened", default=False)
 bpy.types.Scene.batch_mode = bpy.props.EnumProperty(
     name="BATCH SIZE",
     description="Control the batch process mode",
@@ -829,7 +895,6 @@ def statusheader(bl_label, functiontext):
     bg_hex(f"{darkgrey}  {yellow}{functiontext}{ft_q * ws}{yellow.OFF}{darkgrey.OFF}", "#161616")
     bg_hex(f"{darkgrey}__{wq * wl}{darkgrey.OFF}", "#161616")
     bg_hex(f"\n", "#161616")
-    clear_reports()
 
 def print_status(batch_index, total_batches, total_objects, current_index):
     darkgrey, grey, yellow, wq, ws, wl = colors()
@@ -838,6 +903,7 @@ def print_status(batch_index, total_batches, total_objects, current_index):
 # =============================================
 # BASE FUNCTIONS
 # =============================================
+
 def bake_render_settings():
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
@@ -846,13 +912,18 @@ def bake_render_settings():
     scene.view_settings.view_transform = 'Standard'
     extrusion = float(scene.xtd_custom_bake_extrusion)
     raydistance = float(scene.xtd_custom_bake_raydistance)
+    scene.cycles.use_preview_denoising = True
+    scene.cycles.use_denoising = True
     scene.cycles.feature_set = 'EXPERIMENTAL'
+    scene.cycles.use_denoising = True
     scene.cycles.device = 'GPU'
     scene.cycles.use_denoising = False
     scene.cycles.samples = 4
     scene.cycles.preview_samples = 4
     scene.cycles.max_bounces = 4
     scene.cycles.diffuse_bounces = 4
+    scene.render.compositor_device = 'GPU'
+    scene.render.compositor_precision = 'FULL'
     scene.cycles.glossy_bounces = 0
     scene.cycles.transmission_bounces = 0
     scene.cycles.volume_bounces = 0
@@ -943,6 +1014,73 @@ def clear_reports():
     except AttributeError:
         pass
 
+def check_bmmode_on(self, obj, select_mode):
+    objmode = False
+    if obj and obj.type == 'MESH':
+        if bpy.context.active_object.mode == "EDIT":
+            if select_mode == "ALL":
+                bpy.ops.mesh.select_all(action='SELECT')
+            if select_mode == "DESELECT":
+                bpy.ops.mesh.select_all(action='DESELECT')
+            objmode = True
+            bm = bmesh.from_edit_mesh(obj.data)
+        else: 
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            if select_mode == "ALL":
+                for vert in bm.verts:
+                    vert.select = True
+                for face in bm.faces:
+                    face.select = True
+                for edge in bm.edges:
+                    edge.select = True
+            if select_mode == "DESELECT":
+                for vert in bm.verts:
+                    vert.select = False
+                for face in bm.faces:
+                    face.select = False
+                for edge in bm.edges:
+                    edge.select = False
+                        
+    # objmode = False
+    # if obj and obj.type == 'MESH':
+        # if bpy.context.active_object.mode == "EDIT":
+            # objmode = True
+            # bm = bmesh.from_edit_mesh(obj.data)
+            # if select_mode == "ALL":
+                # for elem in (*bm.verts, *bm.edges, *bm.faces):
+                    # elem.select = True
+            # elif select_mode == "DESELECT":
+                # for elem in (*bm.verts, *bm.edges, *bm.faces):
+                    # elem.select = False
+        # else: 
+            # bm = bmesh.new()
+            # bm.from_mesh(obj.data)
+            # if select_mode == "ALL":
+                # for elem in (*bm.verts, *bm.edges, *bm.faces):
+                    # elem.select = True
+            # elif select_mode == "DESELECT":
+                # for elem in (*bm.verts, *bm.edges, *bm.faces):
+                    # elem.select = False
+                
+        bm.edges.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+    return objmode, bm
+
+def check_bmmode_off(self, obj, bm, objmode, destructive):
+    if objmode:
+        if destructive:
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+        else:
+            bmesh.update_edit_mesh(obj.data)
+    else:
+        bm.to_mesh(obj.data)
+        bm.free()
+
+    obj.data.update()
+    return
+
 def export_ply_object(obj, export_dir):
     filepath = os.path.join(export_dir, f"{obj.name}.ply")
     bpy.ops.wm.ply_export(
@@ -967,3 +1105,44 @@ def shutdown_computer():
 
 def setup_hotkeys():
     keyboard.add_hotkey("esc", ProcessManager.stop)
+
+def ensure_console():
+    global console_opened
+    if console_opened: return
+    bpy.ops.wm.console_toggle()
+    console_opened = True
+    show_blender_system_console()
+
+@persistent
+def load_handler(a, b):
+    ensure_console()
+
+def show_blender_system_console():
+    def enum_windows_callback(hwnd, results):
+        class_name = win32gui.GetClassName(hwnd)
+        if class_name == "ConsoleWindowClass":
+            results.append((hwnd, win32gui.GetWindowText(hwnd)))
+
+    windows = []
+    win32gui.EnumWindows(enum_windows_callback, windows)
+
+    for hwnd, title in windows:
+        if "blender.exe" in title:
+            break
+
+    is_visible = win32gui.IsWindowVisible(hwnd)
+
+    if is_visible:
+        win32gui.SetForegroundWindow(hwnd)
+        x0, y0, x1, y1 = win32gui.GetWindowRect(hwnd)
+        x0 = 0; 
+        y0 = 0; 
+        x1 = 1140; 
+        y1 = 1000;
+        win32gui.MoveWindow(hwnd, x0, y0, x1, y1, True)
+
+def disable_cache():
+    import sys
+    sys.dont_write_bytecode = True
+    dont_write_bytecode = sys.dont_write_bytecode
+    del sys

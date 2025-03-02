@@ -31,7 +31,7 @@ def import_and_register_modules():
             setattr(bpy.types.Scene, proper_name, bpy.props.BoolProperty(
                 name=f"Show {panel}",
                 description=f"Toggle visibility of the {panel} panel",
-                default=True,
+                default=False,
                 update=make_update_callback(panel)
             ))
 
@@ -81,7 +81,8 @@ def register():
     for name, prop in registered_properties:
         if not hasattr(bpy.types.Scene, name): 
             setattr(bpy.types.Scene, name, prop)
-
+    
+    bpy.app.handlers.load_post.append(load_handler)
 
 def unregister():
     global registered_properties
