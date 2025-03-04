@@ -514,12 +514,17 @@ class XTD_OT_print_faces_vector_data(global_settings.XTDToolsOperator):
     def process_object(self, obj):
         objmode, bm = check_bmmode_on(self, obj, "NONE")
         
-        if len(bm.faces) < 200:
-            print(f"Face normals for object '{obj.name}':")
-            for i, face in enumerate(bm.faces):
-                print(f"Face {i}: {face.normal}")
-        else:
-            print(f"Nagyon sok face-e van ({len(bm.faces)} db!!!). Meg vagy hülyülve?")
+        print(f"Face normals for object '{obj.name}':")
+        face_normals = []
+        for i, face in enumerate(bm.faces):
+            fid = f"{i+1:03d}"
+            normal = f"{face.normal.x:.4f}, {face.normal.y:.4f}, {face.normal.z:.4f}"
+            face_data = f"fid: {fid} - {normal} "
+            face_normals.append(face_data)
+        
+        formatted_output = "\n".join(["| ".join(face_normals[i:i+3]) for i in range(0, len(face_normals), 3)])
+        
+        print(formatted_output)
         
         check_bmmode_off(self, obj, bm, objmode, None)
         return {'FINISHED'}
