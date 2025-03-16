@@ -128,17 +128,9 @@ class XTDToolsOperator(bpy.types.Operator):
     _processed_objects = set()
     
     def execute(self, context):
-        
-        # show_blender_system_console()
-        # console_status = bpy.context.scene.xtd_tools_ensure_console
-        # ensure_console(console_status)
-        
         bl_label = self.bl_label
-        
         self.__class__._processed_objects.clear()
-        
         self.pre_process_object(context)
-        
         self.selected_objects = bpy.context.selected_objects.copy()
         selected_objects = bpy.context.selected_objects
         if not selected_objects:

@@ -901,11 +901,11 @@ class XTD_OT_OptimizeTileResolution(global_settings.XTDToolsOperator):
                     if uv_area < UV_THRESHOLD:
                         to_delete.append(face)
 
-                bmesh.ops.delete(bm, geom=to_delete, context='FACES')
+                # bmesh.ops.delete(bm, geom=to_delete, context='FACES')
                 bm.to_mesh(obj.data)
                 obj.data.update()
                 bm.free()
-                bpy.ops.mesh.customdata_custom_splitnormals_clear()
+                # bpy.ops.mesh.customdata_custom_splitnormals_clear()
                 bar()
             self.report({'INFO'}, f"Optimization completed for {len(bpy.context.selected_objects)} tiles at {self.resolution} resolution.")
             return {'FINISHED'}
