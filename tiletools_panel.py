@@ -260,6 +260,9 @@ class XTD_PT_TileTools(bpy.types.Panel):
                     op.blend_file = blendfile
             
             row = box.row(align=True)
+            row.prop(scene, "xtd_tools_hide_baseobject_afterlink", expand=True)
+            
+            row = box.row(align=True)
             row.operator("xtd_tools.make_land", text="MAKE LAND")
             box = layout.box()
             row = box.row(align=True)

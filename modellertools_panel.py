@@ -62,7 +62,7 @@ class XTD_PT_ModellerTools(bpy.types.Panel):
         row = box.row(align=True)
         row.separator()
         layout = self.layout
-        layout.label(text="TRIM OBJECT BY BOUNDING BOX:", icon="HANDLE_VECTOR")
+        layout.label(text="BOUNDING BOX TOOLS:", icon="HANDLE_VECTOR")
         box = layout.box()
         row = box.row(align=True)
         grid = row.grid_flow(columns=2, align=True)
@@ -74,6 +74,9 @@ class XTD_PT_ModellerTools(bpy.types.Panel):
         row.operator("xtd_tools.separate_quad_by_xy", text="SEPARATE QUAD BY XY", icon='MOD_BOOLEAN')
         row = box.row(align=True)
         row.operator("xtd_tools.print_faces_vector_data", text="PRINT FACE VECTOR DATA", icon='FACESEL')
+        row = box.row(align=True)
+        row.operator("xtd_tools.new_pivot position_by_XY_boundigbox", text="PIVOT TO XY CENTER", icon='CON_PIVOT')
+        
                   
 
 # ================ OPERATORS ================
@@ -590,3 +593,35 @@ class XTD_OT_get_evaluated_mesh(global_settings.XTDToolsOperator):
         new_mesh = bpy.data.meshes.new_from_object(
             eval_obj, preserve_all_data_layers=True, depsgraph=depsgraph)
         return new_mesh
+
+# ================== Print faces ================== 
+class XTD_OT_new_pivot position_by_XY_boundigbox(global_settings.XTDToolsOperator):
+    bl_idname = "xtd_tools.new_pivot position_by_XY_boundigbox"
+    bl_label = "new pivot position by XY boundigbox"
+    
+    def process(self, obj):
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        
+        bbox_corners = [mathutils.Vector(corner) for corner in obj.bound_box]
+        
+        min_x = min(corner.x for corner in bbox_corners)
+        max_x = max(corner.x for corner in bbox_corners)
+        min_y = min(corner.y for corner in bbox_corners)
+        max_y = max(corner.y for corner in bbox_corners)
+        
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        delta_x = center_x - obj.location.x
+        delta_y = center_y - obj.location.y
+        
+        for vert in obj.data.vertices:
+            vert.co.x -= delta_x
+            vert.co.y -= delta_y
+            vert.co.z -= obj.location.z
+        
+        obj.location.x = center_x
+        obj.location.y = center_y
+        obj.location.z = 0.0
+        
+        return {'FINISHED'}
